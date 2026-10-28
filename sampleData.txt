@@ -1,0 +1,102 @@
+URL tests
+Lower-risk-looking URLs:
+https://example.com
+https://www.google.com
+https://www.microsoft.com
+https://www.wikipedia.org
+https://www.github.com
+https://www.python.org
+https://www.mozilla.org
+https://www.openai.com
+https://www.apple.com
+https://www.bbc.com
+Moderate/suspicious-looking test URLs:
+http://verify-account.example.com
+https://secure-login.example.test
+http://update-your-account.example.org
+https://account-validation.example.com
+http://wallet-confirm.example.test
+https://login-security-check.example.org
+http://verify-payment.example.com
+https://secure-update-account.example.test
+http://customer-login-verify.example.org
+https://account-review-required.example.com
+High-risk-looking test URLs:
+https://example.com@fake-login.test
+http://secure-login-verify-account.example.test
+http://verify-password-urgent.example.test
+https://bank-account-suspended-login.example.test
+http://crypto-wallet-verify.example.test
+https://update-payment-details.example.test
+http://gift-card-reward-claim.example.test
+https://urgent-account-confirm.example.test
+http://login-otp-verification.example.test
+https://secure-refund-claim.example.test
+Email tests
+Lower-risk examples:
+Hi Sam, our meeting is confirmed for Tuesday at 10 AM. Please let me know if you need anything.
+Your order has been shipped. Track it through the official app or the website you normally use.
+Reminder: The engineering team review is scheduled for tomorrow morning.
+Thank you for your subscription. Your receipt is available in your account portal.
+The office will be closed on Friday for maintenance.
+Please review the attached agenda before our weekly team call.
+Your appointment is confirmed for 3 PM on Thursday.
+The monthly newsletter is now available on our official website.
+Thanks for contacting customer support. We will respond within two business days.
+Your requested document has been prepared and is available through the internal portal.
+Moderate-risk examples:
+Dear customer, kindly review your account information today.
+A refund may be waiting for you. Please check your account.
+You have been selected for a gift card reward.
+Dear user, a payment issue needs your attention.
+Kindly confirm your profile details to avoid delays.
+Your crypto transaction requires a quick review.
+A prize is available for your account; check the details now.
+Dear customer, please review this unusual payment notification.
+Your account may need updating. Visit our official app to review it.
+Kindly contact support about a pending refund.
+High-risk examples:
+Urgent: Your bank account will be suspended today. Verify your password and OTP immediately at https://secure-login.example.com
+Final warning: confirm your card number now to prevent account closure.
+You won a prize! Act now and enter your bank details to claim it.
+Urgent payment required. Verify your account password immediately.
+Dear customer, submit your one-time code to receive your refund.
+Your wallet is blocked. Verify your crypto account and password now.
+Act now: enter your OTP and card number to avoid suspension.
+Your payment failed. Click https://verify-payment.example.test and confirm your bank details.
+Immediate action required: verify your account password or lose access.
+You are selected for a gift card. Send your OTP to confirm delivery.
+SMS tests
+Lower-risk examples:
+Hi, your delivery is scheduled for tomorrow between 2 PM and 4 PM.
+Reminder: Your dentist appointment is at 11 AM tomorrow.
+Your mobile data plan renews automatically on 1 November.
+Team meeting moved to 3 PM. Please check the calendar.
+Your library book is due next Friday.
+Thanks for your payment. Your receipt is available in the official app.
+Your cab has arrived at the pickup point.
+Office maintenance is planned this Saturday.
+Your appointment confirmation number is 123456.
+The package is ready for collection at the local branch.
+Moderate-risk examples:
+Dear customer, please review a payment notification in the official app.
+You may have a refund waiting. Kindly check your account.
+Your profile needs an update. Please contact support if unexpected.
+A gift card reward may be available for you.
+Dear user, review your account settings today.
+Your crypto transaction needs review.
+Kindly check a pending payment notice.
+Your account may require verification soon.
+A prize notification has been issued for your account.
+Please review your wallet activity in the official application.
+High-risk examples:
+URGENT: Your account will be suspended. Verify password and OTP now: https://secure-login.example.test
+You won a gift card! Act now and send your bank details.
+Final warning: confirm your card number immediately to avoid suspension.
+Refund pending. Click https://refund-claim.example.test and enter your OTP.
+Urgent payment verification needed. Submit your password now.
+Your wallet is blocked. Verify crypto account at https://wallet-check.example.test
+Act now: send the one-time code you received to unlock your account.
+Dear customer, confirm bank details immediately or your payment will fail.
+You have won a prize. Open https://claim-prize.example.test before it expires.
+Immediate account verification required. Enter password, OTP, and card number now.
