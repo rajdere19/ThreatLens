@@ -100,3 +100,13 @@ Act now: send the one-time code you received to unlock your account.
 Dear customer, confirm bank details immediately or your payment will fail.
 You have won a prize. Open https://claim-prize.example.test before it expires.
 Immediate account verification required. Enter password, OTP, and card number now.
+
+
+
+//backend :
+& "C:\Users\rajde\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" app.py
+
+
+//forntend : 
+cd frontend
+npm.cmd run dev
