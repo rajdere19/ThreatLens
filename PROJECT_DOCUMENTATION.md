@@ -233,4 +233,78 @@ npm.cmd run build
 *(Compiles React assets into `frontend/dist/`)*
 
 ---
+
+## 🏛️ 8. Government Portal Clone & Typosquatting Engine (`GOV_DIRECTORY`)
+
+Cybercriminals frequently target citizens by cloning official government service portals onto cheap, untrusted TLDs (`.site`, `.xyz`, `.sh`, `.hn`, `.top`, `.vip`). ThreatLens maintains a dedicated **Government Directory** (`GOV_DIRECTORY`) covering key state and central portals:
+1. `maharashtra.gov.in` (Official Maharashtra Portal)
+2. `aaplesarkar.mahaonline.gov.in` (Citizen Services Portal)
+3. `mahadbt.maharashtra.gov.in` (Direct Benefit Transfer Portal)
+4. `bhulekh.mahabhumi.gov.in` (Land Records 7/12 Portal)
+5. `igrmaharashtra.gov.in` (Registration & Stamp Duty Portal)
+6. `mpsc.gov.in` (Public Service Commission)
+7. `cetcell.mahacet.org` (State Common Entrance Test Cell)
+8. `mahadiscom.in` (MSEDCL Electricity Utility)
+9. `msrtc.maharashtra.gov.in` (State Road Transport Corporation)
+10. `mahapolice.gov.in` (State Police Portal)
+11. `sarathi.parivahan.gov.in` (Driving License & Transport Portal)
+
+### Typosquatting & Clone Detection Logic:
+- If a target domain contains the identity keywords of these portals (e.g. `mahadbt`, `bhulekh`, `aaplesarkar`, `sarathi`) but is hosted on suspicious TLDs (`.site`, `.xyz`, `.sh`, `.hn`, `.top`, `.vip`, `.cc`), it is flagged immediately as:
+  **`Impersonating Actual Government Website` (Severity: CRITICAL, Score: 98%)**.
+
+---
+
+## 💸 9. Funds Transfer & Delimiter BEC Slot-Filling Engine (`FUNDS_TRANSFER_ANALYZER.py`)
+
+Business Email Compromise (BEC) and SMS smishing attacks often exploit payment requests. To eliminate blind keyword-matching errors, ThreatLens implements sentence-delimiter slot-filling:
+- Detects financial action phrases (`transfer of`, `wire of`, `payment of`, `send sum of`).
+- Scans leftward and rightward until true sentence delimiters (`.` full-stops, question marks, newlines) are hit, while safely ignoring internal numeric decimals (e.g., `$48,750.00`).
+- Fills semantic slots: **Urgency**, **Secrecy / Confidentiality**, **Communication Blackout / Out-of-Office Traps**, and **Cousin Domain Spoofing** via `EMAIL_HEADER_PARSER.py` (e.g., `m.reyes.ceo@northwind-holdings.co` impersonating `jellis@northwindholdings.com`).
+
+---
+
+## 🔐 10. Brand Security & Password Confirmation Engine (`BRAND_SECURITY_VERIFIER.py`)
+
+Differentiates authentic security alerts from deceptive phishing for top target brands (**Google**, **Steam**, **Microsoft**, **Amazon**):
+- **Authentic Security Verifications (Clamped to 2% SAFE):**
+  - Verified sender apex domain (`accounts.google.com`, `steampowered.com`, `accountprotection.microsoft.com`, `amazon.com`).
+  - Standard OTP / security code formats (`G-######`, 5-char Steam Guard, 6-digit Microsoft/Amazon OTPs).
+  - Telemetry context (*"Was this you?"*, login location/device).
+  - Official zero-password disclaimers (*"Steam Support will never ask for your password"*).
+- **Phishing Traps (Clamped to 98-99% CRITICAL):**
+  - Asks user to enter, confirm, or verify their *current/existing password*.
+  - Account suspension threats ("account will be deleted in 24 hours").
+  - Fake ban / trade duping notices.
+  - Fake "Money Credited / Cash Refund / Wallet Grant" lures.
+- **Brand Promotions & Holiday Sales (Clamped to 10% SAFE):**
+  - Verifies official holiday sales (e.g. Steam Summer Sale) sent from genuine domains without suspicious links.
+
+---
+
+## 🛡️ 11. ThreatLens Browser Extension (Manifest V3) & Intercept Shield
+
+ThreatLens includes a complete **Chrome / Edge Browser Extension** in `extension/` providing proactive real-time protection:
+1. **Real-Time Badge Telemetry:** Dynamically updates tab badge with risk score (0-100) and color:
+   - 🟢 **0 - 34% (SAFE):** Green badge.
+   - 🟡 **35 - 64% (MODERATE):** Amber warning badge.
+   - 🔴 **65 - 100% (CRITICAL):** Red badge.
+2. **Proactive Threat Intercept Shield (`blocked.html`):**
+   - Automatically intercepts navigation to dangerous websites ($\ge 65\%$ threat score or `CRITICAL`/`HIGH` risk level).
+   - Displays cyber warning shield with target host, risk score, classification, and explanation of all detected indicators.
+   - Offers safe exit (`Return to Safety`) or temporary 30-minute bypass (`Proceed to Unsafe Site`).
+3. **Popup Mini-Dashboard (`popup.html`):**
+   - Circular SVG gauge with animated risk meter.
+   - Live signal intelligence readout.
+   - One-click re-scan and direct shortcut to full ThreatLens web portal.
+
+### How to Install the Extension in Chrome / Edge:
+1. Open Chrome or Edge and navigate to `chrome://extensions`.
+2. Toggle on **Developer mode** in the top-right corner.
+3. Click **Load unpacked** in the top-left corner.
+4. Select the folder: `c:\Users\Pruthvi\.gemini\antigravity\scratch\ThreatLens\extension`.
+5. The ThreatLens Shield icon will appear in your browser toolbar!
+
+---
+
 *Created for academic evaluation, portfolio presentation, and future system reference.*

@@ -38,20 +38,19 @@ ChartJS.register(
   Filler
 );
 
-const API_BASE = 'http://127.0.0.1:8000';
+const API_BASE = (typeof window !== 'undefined' && window.location.port === '5173') ? 'http://127.0.0.1:8000' : '';
 
 // --- Subtle Glitter Small Star Mouse Cursor ---
 function StarSprinkleCursor() {
   const canvasRef = useRef(null);
-  const particlesRef = useRef([]);
+  const starsRef = useRef([]);
   const animFrameRef = useRef(null);
-  const isRunningRef = useRef(false);
-  const moveCountRef = useRef(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
     const handleResize = () => {
       canvas.width = window.innerWidth;
@@ -60,89 +59,64 @@ function StarSprinkleCursor() {
     handleResize();
     window.addEventListener('resize', handleResize);
 
-    const glitterPalette = ['#ffffff', '#00f2fe', '#fde047', '#38bdf8', '#e2e8f0'];
-
-    const drawGlitterStar = (x, y, spikes, outerRadius, innerRadius, color, alpha, rotation) => {
-      let rot = (Math.PI / 2) * 3 + rotation;
-      let step = Math.PI / spikes;
-      ctx.save();
-      ctx.beginPath();
-      ctx.translate(x, y);
-      ctx.rotate(rotation);
-      ctx.moveTo(0, -outerRadius);
-      for (let i = 0; i < spikes; i++) {
-        let sx = Math.cos(rot) * outerRadius;
-        let sy = Math.sin(rot) * outerRadius;
-        ctx.lineTo(sx, sy);
-        rot += step;
-        sx = Math.cos(rot) * innerRadius;
-        sy = Math.sin(rot) * innerRadius;
-        ctx.lineTo(sx, sy);
-        rot += step;
+    class StarParticle {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.size = Math.random() * 2.2 + 0.8;
+        this.alpha = 1;
+        this.fade = Math.random() * 0.035 + 0.02;
+        this.vx = (Math.random() - 0.5) * 0.9;
+        this.vy = (Math.random() - 0.5) * 0.9 + 0.3;
+        this.color = Math.random() > 0.4 ? '#00f2fe' : '#ffffff';
       }
-      ctx.lineTo(0, -outerRadius);
-      ctx.closePath();
-      ctx.fillStyle = color;
-      ctx.shadowBlur = 5;
-      ctx.shadowColor = color;
-      ctx.globalAlpha = alpha;
-      ctx.fill();
-      ctx.restore();
-    };
+      update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.alpha -= this.fade;
+      }
+      draw(c) {
+        c.save();
+        c.globalAlpha = Math.max(0, this.alpha);
+        c.fillStyle = this.color;
+        c.shadowColor = this.color;
+        c.shadowBlur = 6;
+        c.beginPath();
+        c.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        c.fill();
+        c.restore();
+      }
+    }
 
-    const updateAndDraw = () => {
+    const render = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const particles = particlesRef.current;
-
-      for (let i = particles.length - 1; i >= 0; i--) {
-        const p = particles[i];
-        p.x += p.vx;
-        p.y += p.vy;
-        p.rotation += p.vRot;
-        p.alpha -= p.decay;
-
-        if (p.alpha <= 0) {
-          particles.splice(i, 1);
-          continue;
+      for (let i = starsRef.current.length - 1; i >= 0; i--) {
+        const s = starsRef.current[i];
+        s.update();
+        if (s.alpha <= 0) {
+          starsRef.current.splice(i, 1);
+        } else {
+          s.draw(ctx);
         }
-
-        drawGlitterStar(p.x, p.y, p.spikes, p.size, p.size * 0.38, p.color, Math.max(0, p.alpha), p.rotation);
       }
-
-      if (particles.length > 0) {
-        animFrameRef.current = requestAnimationFrame(updateAndDraw);
-      } else {
-        isRunningRef.current = false;
-      }
+      animFrameRef.current = requestAnimationFrame(render);
     };
+    render();
 
+    let lastX = 0, lastY = 0;
     const onPointerMove = (e) => {
-      moveCountRef.current += 1;
-      // Emit only a subtle, small amount of glitter: 1 tiny star every 3 pointer events
-      if (moveCountRef.current % 3 !== 0) return;
-
-      particlesRef.current.push({
-        x: e.clientX,
-        y: e.clientY,
-        size: 2.2 + Math.random() * 2.2, // Small glitter star size
-        vx: (Math.random() - 0.5) * 0.8,
-        vy: (Math.random() - 0.5) * 0.8 + 0.15,
-        rotation: Math.random() * Math.PI * 2,
-        vRot: (Math.random() - 0.5) * 0.1,
-        alpha: 0.95,
-        decay: 0.03 + Math.random() * 0.02,
-        spikes: 4, // 4-point twinkling diamond star
-        color: glitterPalette[Math.floor(Math.random() * glitterPalette.length)]
-      });
-
-      if (!isRunningRef.current) {
-        isRunningRef.current = true;
-        animFrameRef.current = requestAnimationFrame(updateAndDraw);
+      const dist = Math.hypot(e.clientX - lastX, e.clientY - lastY);
+      if (dist > 7) {
+        lastX = e.clientX;
+        lastY = e.clientY;
+        for (let i = 0; i < 2; i++) {
+          starsRef.current.push(new StarParticle(e.clientX + (Math.random() - 0.5) * 8, e.clientY + (Math.random() - 0.5) * 8));
+        }
+        if (starsRef.current.length > 60) starsRef.current.shift();
       }
     };
 
     window.addEventListener('pointermove', onPointerMove, { passive: true });
-
     return () => {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('pointermove', onPointerMove);
@@ -150,23 +124,14 @@ function StarSprinkleCursor() {
     };
   }, []);
 
-  return <canvas ref={canvasRef} className="star-canvas-overlay" />;
+  return <canvas ref={canvasRef} style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9999 }} />;
 }
 
 // --- Icons ---
-const ShieldIcon = ({ className = "shield-logo-icon", style }) => (
+const ShieldIcon = ({ className, style }) => (
   <svg className={className} style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
     <path d="m9 12 2 2 4-4" stroke="#00f2fe" strokeWidth="2.5" />
-  </svg>
-);
-
-const GoogleIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24">
-    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
-    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
-    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 10.04 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
-    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
   </svg>
 );
 
@@ -191,14 +156,6 @@ const MailIcon = () => (
   </svg>
 );
 
-const GlobeIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10"></circle>
-    <line x1="2" y1="12" x2="22" y2="12"></line>
-    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-  </svg>
-);
-
 const AlertIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
@@ -207,16 +164,9 @@ const AlertIcon = () => (
   </svg>
 );
 
-const CopyIcon = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-  </svg>
-);
-
 // --- Circular Gauge Meter ---
 function ScoreGauge({ score, riskLevel }) {
-  const radius = 54;
+  const radius = 48;
   const circumference = 2 * Math.PI * radius;
   const validScore = Math.max(0, Math.min(100, score || 0));
   const offset = circumference - (validScore / 100) * circumference;
@@ -232,12 +182,12 @@ function ScoreGauge({ score, riskLevel }) {
 
   return (
     <div className="radial-meter-box">
-      <svg className="gauge-svg" viewBox="0 0 130 130">
-        <circle className="gauge-bg-circle" cx="65" cy="65" r={radius} />
+      <svg className="gauge-svg" viewBox="0 0 120 120">
+        <circle className="gauge-bg-circle" cx="60" cy="60" r={radius} />
         <circle
           className="gauge-fill-circle"
-          cx="65"
-          cy="65"
+          cx="60"
+          cy="60"
           r={radius}
           stroke={strokeColor}
           strokeDasharray={circumference}
@@ -246,221 +196,137 @@ function ScoreGauge({ score, riskLevel }) {
       </svg>
       <div className="gauge-text-center">
         <div className="gauge-score-num" style={{ color: strokeColor }}>{validScore}%</div>
-        <div className="gauge-score-unit">Risk Score</div>
+        <div className="gauge-score-label">Risk</div>
       </div>
     </div>
   );
 }
 
-// --- Dedicated Full Login & Create Account Page ---
-function LoginPage({ onLoginSuccess }) {
-  const [isCreateAccount, setIsCreateAccount] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [infoMsg, setInfoMsg] = useState('');
+// --- Story-Driven Narrative Scroll Animation Showcase (5 Frames) ---
+function ThreatScrollyShowcase() {
+  const [activeFrame, setActiveFrame] = useState(0);
+  const containerRef = useRef(null);
 
-  async function handleGoogleAuth() {
-    setLoading(true);
-    setErrorMsg('');
-    setInfoMsg('');
-    try {
-      const cred = await signInWithPopup(auth, googleProvider);
-      onLoginSuccess(cred.user);
-    } catch (err) {
-      console.warn("Google Auth error:", err);
-      if (err.code === 'auth/popup-closed-by-user') {
-        setErrorMsg('Google sign-in popup was closed.');
-      } else if (err.code === 'auth/operation-not-allowed' || err.code === 'auth/configuration-not-found') {
-        setErrorMsg('Google Sign-in is configured. Please enable the Google provider in Firebase Authentication console.');
-        setInfoMsg('Tip: You can use "Continue as Guest Analyst" below to immediately test the system.');
-      } else if (err.code === 'auth/unauthorized-domain') {
-        setErrorMsg(`Domain ${window.location.hostname} is not in Firebase authorized domains list.`);
-      } else {
-        setErrorMsg(err.message || 'Google sign-in failed.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setErrorMsg('');
-    setInfoMsg('');
-
-    if (isCreateAccount && password !== confirmPassword) {
-      setErrorMsg('Passwords do not match. Please verify both password fields.');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      let cred;
-      if (isCreateAccount) {
-        cred = await createUserWithEmailAndPassword(auth, email, password);
-      } else {
-        cred = await signInWithEmailAndPassword(auth, email, password);
-      }
-      onLoginSuccess(cred.user);
-    } catch (err) {
-      console.warn("Auth error:", err);
-      if (err.code === 'auth/configuration-not-found') {
-        setErrorMsg('Email/Password provider needs to be enabled in Firebase Authentication console.');
-        setInfoMsg('Tip: Click "Continue as Guest Analyst" below for 1-click immediate access.');
-      } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-        setErrorMsg('Invalid email or password. Please verify credentials.');
-      } else if (err.code === 'auth/email-already-in-use') {
-        setErrorMsg('An account with this email already exists. Try signing in instead.');
-      } else {
-        setErrorMsg(err.message || 'Authentication error.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function handleGuestLogin() {
-    const guestUser = {
-      displayName: 'Guest Security Analyst',
-      email: 'guest@threatlens.intel',
-      isGuest: true
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const scrollableDist = rect.height - window.innerHeight;
+      if (scrollableDist <= 0) return;
+      const progress = Math.max(0, Math.min(1, -rect.top / scrollableDist));
+      const frameIdx = Math.min(4, Math.floor(progress * 5));
+      setActiveFrame(frameIdx);
     };
-    onLoginSuccess(guestUser);
-  }
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   return (
-    <div className="login-page-view page-enter-anim">
-      <div className="login-page-glow" />
-      <div className="login-card-container">
-        <div className="login-card-header">
-          <div className="login-brand-tag">SECURITY CLEARANCE PORTAL</div>
-          <h2 className="login-card-title">
-            {isCreateAccount ? 'Create Analyst Account' : 'Security Analyst Sign In'}
+    <section ref={containerRef} className="scrolly-container">
+      <div className="scrolly-sticky-stage">
+        
+        {/* Frame 1: Warning Sign in Triangle */}
+        <div className={`scrolly-frame ${activeFrame === 0 ? 'active' : ''}`}>
+          <div className="alert-triangle-pulse">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+          </div>
+          <h3 className="frame-title">Zero-Day Digital Threats Detected</h3>
+          <p className="frame-caption">Scroll down to observe how deceptive cyber campaigns harvest credentials and bypass defenses...</p>
+        </div>
+
+        {/* Frame 2: Beware of fake emails and harmful websites */}
+        <div className={`scrolly-frame ${activeFrame === 1 ? 'active' : ''}`}>
+          <h2 className="frame-big-headline">
+            Beware of <span className="highlight-red">Fake Emails</span> & <span className="highlight-amber">Harmful Websites</span>
           </h2>
-          <p className="login-card-subtitle">
-            AI-Powered Cybersecurity Threat Intelligence
+          <p className="frame-caption" style={{ marginTop: '0.75rem' }}>
+            Attackers deploy urgent lures and lookalike domains designed to deceive the human eye.
+          </p>
+          <div className="pulsing-triangles-cloud">
+            <span className="pop-triangle t1">⚠️</span>
+            <span className="pop-triangle t2">⚠️</span>
+            <span className="pop-triangle t3">⚠️</span>
+            <span className="pop-triangle t4">⚠️</span>
+          </div>
+        </div>
+
+        {/* Frame 3: Fake Email Simulator */}
+        <div className={`scrolly-frame ${activeFrame === 2 ? 'active' : ''}`}>
+          <div className="fake-email-card">
+            <div className="email-header-row">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <MailIcon />
+                <span className="sender-tag">From: security-notice@paypa1-billing.tk</span>
+              </div>
+              <span className="urgency-badge">URGENT</span>
+            </div>
+            <p className="typewriter-text">
+              "Your financial account will be suspended within 24 hours. Immediate re-verification required: click below to confirm your password and 2FA code."
+            </p>
+            <div className="flags-wrap">
+              <span className="flag-pill">🚨 Coercive Urgency Pressure</span>
+              <span className="flag-pill">🚨 Credential & 2FA Solicitation</span>
+              <span className="flag-pill">🚨 Spoofed Financial Authority</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Frame 4: Harmful Website Spoof Bar */}
+        <div className={`scrolly-frame ${activeFrame === 3 ? 'active' : ''}`}>
+          <div className="fake-browser-card">
+            <div className="fake-url-bar">
+              <span style={{ color: '#ef4444' }}>🔓 Not Secure</span>
+              <span>http://<span className="spoof-highlight">paypa1.com</span>.verify-account.tk/login</span>
+            </div>
+            <div className="callouts-row">
+              <span className="callout-pill">⚠️ Leetspeak: 1 replaced l</span>
+              <span className="callout-pill">⚠️ High-Risk TLD: .tk</span>
+              <span className="callout-pill">⚠️ Deceptive Subdomain Stacking</span>
+              <span className="callout-pill">⚠️ Bare HTTP Protocol</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Frame 5: ThreatLens AI Neutralization */}
+        <div className={`scrolly-frame ${activeFrame === 4 ? 'active' : ''}`}>
+          <div className="shield-activate-wrap">
+            <ShieldIcon style={{ width: 44, height: 44 }} />
+          </div>
+          <h2 className="frame-title">Threat Neutralized in Real Time</h2>
+          <p className="frame-caption">
+            ThreatLens dual-engine machine learning and lexical heuristics isolate brand spoofing in &lt;40ms.
           </p>
         </div>
 
-        {errorMsg && <div className="auth-error-banner">{errorMsg}</div>}
-        {infoMsg && (
-          <div style={{ background: 'rgba(56, 189, 248, 0.12)', border: '1px solid rgba(56, 189, 248, 0.3)', color: '#7dd3fc', fontSize: '0.82rem', padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-sm)', marginBottom: '1rem' }}>
-            {infoMsg}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit}>
-          <div className="login-form-group">
-            <label className="login-input-label">Work Email Address</label>
-            <div className="login-input-wrap">
-              <MailIcon />
-              <input
-                className="login-input-element"
-                type="email"
-                placeholder="analyst@organization.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="login-form-group">
-            <div className="login-input-label">
-              <span>Password</span>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Min. 6 chars</span>
-            </div>
-            <div className="login-input-wrap">
-              <LockIcon />
-              <input
-                className="login-input-element"
-                type="password"
-                placeholder="••••••••••••"
-                minLength="6"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          {isCreateAccount && (
-            <div className="login-form-group">
-              <label className="login-input-label">Confirm Password</label>
-              <div className="login-input-wrap">
-                <LockIcon />
-                <input
-                  className="login-input-element"
-                  type="password"
-                  placeholder="Repeat your password"
-                  minLength="6"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-          )}
-
-          <button className="login-submit-btn" disabled={loading}>
-            {loading ? 'Processing…' : isCreateAccount ? 'Create Account & Continue' : 'Sign In & Continue'}
-          </button>
-        </form>
-
-        <div className="login-divider-row">
-          <span>OR</span>
+        {/* Progress Dots */}
+        <div className="scrolly-progress-dots">
+          {[0, 1, 2, 3, 4].map((idx) => (
+            <div key={idx} className={`progress-dot ${activeFrame === idx ? 'active' : ''}`} />
+          ))}
         </div>
 
-        {/* Continue with Google at the bottom of the page */}
-        <button className="login-google-btn" onClick={handleGoogleAuth} disabled={loading}>
-          <GoogleIcon />
-          <span>{loading ? 'Connecting with Google…' : 'Continue with Google'}</span>
-        </button>
-
-        {/* Toggle between Login and Create Account */}
-        <div className="login-switch-row">
-          <span>{isCreateAccount ? 'Already have an analyst account?' : "Don't have an account yet?"}</span>
-          <button
-            type="button"
-            className="login-switch-link"
-            onClick={() => {
-              setIsCreateAccount(!isCreateAccount);
-              setErrorMsg('');
-              setInfoMsg('');
-            }}
-          >
-            {isCreateAccount ? 'Sign In' : 'Create Account'}
-          </button>
-        </div>
-
-        {/* Guest Demo Mode */}
-        <button className="login-guest-btn" onClick={handleGuestLogin}>
-          <span>⚡</span>
-          <span>Continue as Guest Analyst (Instant Demo Access)</span>
-        </button>
       </div>
-    </div>
+    </section>
   );
 }
 
-// --- Home / Landing Page ---
+// --- Home Page (Duskline Layout + ThreatLens Capabilities) ---
 function HomePage({ onScanSample, onNavigateTab, userEmail }) {
   const [heroInput, setHeroInput] = useState('');
-  const [heroResult, setHeroResult] = useState(null);
   const [heroLoading, setHeroLoading] = useState(false);
-  const [faqOpen, setFaqOpen] = useState({ 0: true });
+  const [heroResult, setHeroResult] = useState(null);
 
-  const toggleFaq = (idx) => {
-    setFaqOpen(prev => ({ ...prev, [idx]: !prev[idx] }));
-  };
-
-  async function handleHeroScan(urlToScan) {
-    const target = urlToScan || heroInput;
+  async function handleHeroScan(overrideUrl) {
+    const target = (overrideUrl || heroInput).trim();
     if (!target) return;
     setHeroLoading(true);
+    setHeroResult(null);
     try {
       const res = await fetch(`${API_BASE}/api/analyze/url`, {
         method: 'POST',
@@ -468,7 +334,7 @@ function HomePage({ onScanSample, onNavigateTab, userEmail }) {
         body: JSON.stringify({ value: target, user_email: userEmail })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Scan failed');
+      if (!res.ok) throw new Error(data.error || 'Inspection failed');
       setHeroResult(data);
     } catch (err) {
       setHeroResult({ error: err.message });
@@ -479,289 +345,612 @@ function HomePage({ onScanSample, onNavigateTab, userEmail }) {
 
   const samplePresets = [
     { label: 'Google (Legitimate)', url: 'https://www.google.com', tier: 'safe' },
-    { label: 'PayPal Portal (Official)', url: 'https://paypal.com/signin', tier: 'safe' },
-    { label: 'Bitly Link (Shortener)', url: 'http://bit.ly/secure-login-392', tier: 'warn' },
+    { label: 'PayPal (Official)', url: 'https://paypal.com/signin', tier: 'safe' },
+    { label: 'Bitly (Shortener)', url: 'http://bit.ly/secure-login-392', tier: 'warn' },
     { label: 'PayPal Spoof (Phishing)', url: 'http://paypal-security-update.tk/login.php', tier: 'danger' },
-    { label: 'Raw IP Host (Credential)', url: 'http://192.168.1.100/paypal-verification.php?user=login', tier: 'danger' }
+    { label: 'Bare IP Host', url: 'http://192.168.1.100/paypal-verification.php?user=login', tier: 'danger' }
   ];
 
   return (
-    <div className="home-view-container page-enter-anim">
-      {/* Hero Section */}
-      <section className="hero-wrapper">
-        <div className="hero-glow-back" />
-        <div className="hero-eyebrow float-subtle">
-          <span className="status-dot-pulse" />
-          <span>Real-Time Cyber Threat Intelligence v3.5</span>
-        </div>
-        <h1 className="hero-title">
-          <span className="highlight-cyan">AI-Powered Cybersecurity</span> Threat Intelligence
-        </h1>
-        <p className="hero-desc">
-          Defend organizations against credential harvesting, brand typosquatting, and deceptive social engineering
-          using dual-engine machine learning and real-time lexical threat heuristics.
-        </p>
+    <div>
+      {/* Duskline Hero Section */}
+      <section className="home-hero">
+        <div className="home-hero-glow" />
+        <div className="home-hero-inner">
+          <div className="home-hero-copy">
+            <span className="home-pill">
+              <div className="home-thq-home-pill-dot-elm" />
+              <span>1,284 new exposures confirmed this week</span>
+            </span>
 
-        {/* Hero Interactive Scanner */}
-        <div className="hero-scanner-container">
-          <div className="hero-search-box">
-            <SearchIcon />
-            <input
-              className="search-input-field"
-              placeholder="Paste website URL (e.g. https://example.com or suspicious link)..."
-              value={heroInput}
-              onChange={(e) => setHeroInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleHeroScan()}
-            />
-            <button
-              className="btn-primary"
-              onClick={() => handleHeroScan()}
-              disabled={heroLoading || !heroInput.trim()}
-            >
-              {heroLoading ? 'Inspecting...' : 'Analyze Threat'}
-            </button>
-          </div>
-        </div>
+            <h1 className="hero-title">
+              The threat you didn&apos;t see is the one they exploited.
+            </h1>
 
-        {/* Quick test pills */}
-        <div className="quick-pills-row">
-          <span className="quick-pills-label">Quick Test Scenarios:</span>
-          {samplePresets.map((p, idx) => (
-            <button
-              key={idx}
-              className={`pill-badge-btn ${p.tier}`}
-              onClick={() => {
-                setHeroInput(p.url);
-                handleHeroScan(p.url);
-              }}
-            >
-              {p.tier === 'safe' ? '🟢' : p.tier === 'warn' ? '🟡' : '🔴'} {p.label}
-            </button>
-          ))}
-        </div>
+            <p className="hero-subtitle home-hero-lede">
+              ThreatLens maps everything your organization has facing the internet, scores what an attacker could do with it, and detects zero-day phishing, brand typosquatting, and coercive social engineering in real time.
+            </p>
 
-        {/* Live Hero Result Modal / Banner if scanned */}
-        {heroResult && (
-          <div style={{ width: '100%', maxWidth: '820px', margin: '0 auto 3rem', textAlign: 'left' }}>
-            {heroResult.error ? (
-              <div className="auth-error-banner">{heroResult.error}</div>
-            ) : (
-              <div className={`verdict-banner-card level-${heroResult.risk_level.toLowerCase()}`}>
-                <div className="verdict-info-col">
-                  <div className="verdict-badges-wrap" style={{ marginBottom: '0.5rem' }}>
-                    <span className={`threat-level-tag tag-${heroResult.risk_level.toLowerCase()}`}>
-                      {heroResult.risk_level} RISK
-                    </span>
-                    <span className="category-tag">{heroResult.threat_category}</span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-                      Confidence: {heroResult.confidence}%
-                    </span>
-                  </div>
-                  <h3>{heroResult.verdict}</h3>
-                  <div className="verdict-target-text">{heroResult.value}</div>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-                    {heroResult.metadata?.recommendation}
-                  </p>
+            {/* Embedded Live URL Threat Scanner */}
+            <div className="hero-scan-embed">
+              <div className="hero-search-input-wrap">
+                <SearchIcon />
+                <input
+                  className="hero-search-input-field"
+                  placeholder="Paste website URL (e.g. https://example.com or suspicious link)..."
+                  value={heroInput}
+                  onChange={(e) => setHeroInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleHeroScan()}
+                />
+                <button
+                  className="btn btn-primary"
+                  onClick={() => handleHeroScan()}
+                  disabled={heroLoading || !heroInput.trim()}
+                >
+                  {heroLoading ? 'Inspecting...' : 'Analyze Threat'}
+                </button>
+              </div>
+
+              <div className="hero-presets-strip">
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-on-surface-dim)', fontWeight: 600 }}>PRESETS:</span>
+                {samplePresets.map((p, idx) => (
                   <button
-                    className="btn-secondary"
-                    style={{ fontSize: '0.8rem', padding: '0.35rem 0.85rem' }}
+                    key={idx}
+                    className={`preset-pill ${p.tier}`}
                     onClick={() => {
-                      onScanSample(heroResult.value);
-                      onNavigateTab('url');
+                      setHeroInput(p.url);
+                      handleHeroScan(p.url);
                     }}
                   >
-                    View Full Threat Breakdown →
+                    {p.tier === 'safe' ? '🟢' : p.tier === 'warn' ? '🟡' : '🔴'} {p.label}
                   </button>
-                </div>
-                <ScoreGauge score={heroResult.risk_score} riskLevel={heroResult.risk_level} />
+                ))}
+              </div>
+            </div>
+
+            {/* Live Hero Result Card */}
+            {heroResult && (
+              <div style={{ marginTop: '1rem' }}>
+                {heroResult.error ? (
+                  <div style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', padding: '0.75rem 1rem', borderRadius: 8, border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                    {heroResult.error}
+                  </div>
+                ) : (
+                  <div className={`verdict-banner-card level-${heroResult.risk_level.toLowerCase()}`}>
+                    <div>
+                      <div className="verdict-badges-wrap">
+                        <span className={`threat-level-tag tag-${heroResult.risk_level.toLowerCase()}`}>
+                          {heroResult.risk_level} RISK
+                        </span>
+                        <span className="category-tag">{heroResult.threat_category}</span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--color-on-surface-dim)' }}>
+                          Confidence: {heroResult.confidence}%
+                        </span>
+                      </div>
+                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '0.35rem' }}>{heroResult.verdict}</h3>
+                      <p style={{ fontSize: '0.82rem', color: 'var(--color-on-surface-secondary)', marginBottom: '0.75rem' }}>
+                        {heroResult.metadata?.recommendation}
+                      </p>
+                      <button
+                        className="btn btn-outline"
+                        style={{ fontSize: '0.8rem', padding: '0.35rem 0.85rem' }}
+                        onClick={() => {
+                          onScanSample(heroResult.value);
+                          onNavigateTab('url');
+                        }}
+                      >
+                        View Full Threat Breakdown →
+                      </button>
+                    </div>
+                    <ScoreGauge score={heroResult.risk_score} riskLevel={heroResult.risk_level} />
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
 
-        {/* KPI Strip */}
-        <div className="kpi-strip">
-          <div className="kpi-card card-stagger-1">
-            <div className="kpi-value">99.4%</div>
-            <div className="kpi-label">Detection Precision</div>
+            <div className="home-hero-actions">
+              <button className="btn btn-primary btn-lg" onClick={() => onNavigateTab('url')}>
+                <span>Launch Deep Scanner</span>
+              </button>
+              <button className="btn btn-outline btn-lg" onClick={() => onNavigateTab('platform')}>
+                <span>How the Scan Works</span>
+              </button>
+            </div>
+
+            <p className="home-hero-note">
+              No agent, no credentials, no contract. One domain is enough to start.
+            </p>
           </div>
-          <div className="kpi-card card-stagger-2">
-            <div className="kpi-value">&lt;40ms</div>
-            <div className="kpi-label">Real-Time Inference</div>
-          </div>
-          <div className="kpi-card card-stagger-3">
-            <div className="kpi-value">500K+</div>
-            <div className="kpi-label">Trained Threat Patterns</div>
-          </div>
-          <div className="kpi-card card-stagger-3">
-            <div className="kpi-value">100%</div>
-            <div className="kpi-label">Explainable Indicators</div>
+
+          {/* Duskline Attack Surface Map Card */}
+          <div className="home-map">
+            <div className="home-map-top">
+              <span className="home-map-title">Perimeter · threatlens.intel</span>
+              <span className="home-map-count">412 assets</span>
+            </div>
+            <div className="home-map-grid">
+              <div className="home-node" />
+              <div className="home-node" />
+              <div className="home-node home-node-warn" />
+              <div className="home-node" />
+              <div className="home-node" />
+              <div className="home-node" />
+              <div className="home-node" />
+              <div className="home-node home-node-hot" />
+              <div className="home-node" />
+              <div className="home-node" />
+              <div className="home-node home-node-warn" />
+              <div className="home-node" />
+              <div className="home-node" />
+              <div className="home-node" />
+              <div className="home-node" />
+              <div className="home-node" />
+              <div className="home-node" />
+              <div className="home-node home-node-warn" />
+              <div className="home-node home-node-warn" />
+              <div className="home-node" />
+              <div className="home-node" />
+              <div className="home-node home-node-hot" />
+              <div className="home-node" />
+              <div className="home-node" />
+            </div>
+            <div className="home-map-find">
+              <span className="home-find-sev">Critical</span>
+              <div>
+                <p className="home-find-title">paypal-security-update.tk</p>
+                <p className="home-find-text">
+                  Unauthorized brand typosquatting · credential harvesting prompt · bare HTTP
+                </p>
+              </div>
+            </div>
+            <div className="home-map-find home-map-find-quiet">
+              <span className="home-find-sev home-find-sev-med">High</span>
+              <div>
+                <p className="home-find-title">bit.ly/secure-login-392</p>
+                <p className="home-find-text">
+                  Destination masking via URL shortener · unverified destination
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Differentiated Risk Tiers Explorer */}
-      <section style={{ margin: '4rem 0' }}>
-        <div className="section-header">
-          <div className="section-eyebrow">DIFFERENTIATED THREAT MATRIX</div>
-          <h2 className="section-title">How ThreatLens Evaluates Threat Tiers</h2>
-          <p className="section-desc">
-            Unlike simplistic binary classifiers, our dual-engine architecture separates true brand impersonation
-            from masked shorteners and verified official domains with precision.
-          </p>
+      {/* Narrative Scrollytelling Showcase */}
+      <ThreatScrollyShowcase />
+
+      {/* Duskline Logos Strip */}
+      <section className="home-logos">
+        <p className="home-logos-label">Watching the perimeter for</p>
+        <div className="home-logos-row">
+          <span className="home-logo">Northvale Group</span>
+          <span className="home-logo">Kestrel Bank</span>
+          <span className="home-logo">Saarloos Energy</span>
+          <span className="home-logo">Vilja Health</span>
+          <span className="home-logo">Port of Rauma</span>
         </div>
+      </section>
 
-        <div className="tiers-grid">
-          <div className="tier-card tier-low card-stagger-1">
-            <span className="tier-badge">🟢 LOW RISK (0 - 34%)</span>
-            <h3 className="tier-title">Verified Legitimate</h3>
-            <div className="tier-score-range">Standard Web Infrastructure</div>
-            <p className="tier-body">
-              Clean lexical structure, standard HTTPS encryption, official verified apex domain (e.g. paypal.com, google.com),
-              and absence of deceptive redirection patterns.
+      {/* Duskline Three Pillars */}
+      <section className="home-pillars">
+        <div className="home-pillars-head">
+          <span className="home-eyebrow">Three jobs, done every day</span>
+          <h2 className="section-title">Find it, rank it, tell you what changed.</h2>
+        </div>
+        <div className="home-pillars-grid">
+          <article className="home-pillar">
+            <div className="home-pillar-art">
+              <div className="home-pillar-line">
+                <span className="home-pillar-key">threatlens.intel</span>
+                <span className="home-pillar-val">root</span>
+              </div>
+              <div className="home-pillar-line">
+                <span className="home-pillar-key">api.threatlens.intel</span>
+                <span className="home-pillar-val">known</span>
+              </div>
+              <div className="home-pillar-line">
+                <span className="home-pillar-key">vpn-2.threatlens.intel</span>
+                <span className="home-pillar-val">new</span>
+              </div>
+              <div className="home-pillar-line">
+                <span className="home-pillar-key">auth.threatlens.org</span>
+                <span className="home-pillar-val">related</span>
+              </div>
+            </div>
+            <h3 className="home-pillar-title">Discovery without a list</h3>
+            <p className="home-pillar-text">
+              Certificates, DNS, registries, cloud ranges and acquisition trails. We find the assets nobody wrote down.
             </p>
-            <ul className="tier-criteria-list">
-              <li>✓ Verified authoritative brand domain</li>
-              <li>✓ Low lexical token entropy</li>
-              <li>✓ Clean DNS infrastructure without IP masking</li>
-            </ul>
+          </article>
+
+          <article className="home-pillar">
+            <div className="home-pillar-art">
+              <div className="home-score">
+                <span className="home-score-val">88</span>
+                <span className="home-score-key">exposure score</span>
+              </div>
+              <div className="home-score-bars">
+                <div className="home-score-bar home-sb-a" />
+                <div className="home-score-bar home-sb-b" />
+                <div className="home-score-bar home-sb-c" />
+                <div className="home-score-bar home-sb-d" />
+              </div>
+              <p className="home-pillar-caption">Reachability · auth · data · blast radius</p>
+            </div>
+            <h3 className="home-pillar-title">Scored by what an attacker gains</h3>
+            <p className="home-pillar-text">
+              An unauthenticated admin console on a forgotten host outranks a theoretical flaw behind three firewalls.
+            </p>
+          </article>
+
+          <article className="home-pillar">
+            <div className="home-pillar-art">
+              <div className="home-diff-line home-diff-add">
+                <span>+</span>
+                <span>2 suspicious domains detected overnight</span>
+              </div>
+              <div className="home-diff-line home-diff-add">
+                <span>+</span>
+                <span>1 typosquatted certificate registered</span>
+              </div>
+              <div className="home-diff-line home-diff-rem">
+                <span>−</span>
+                <span>3 phishing vectors blocked by SOC</span>
+              </div>
+              <p className="home-pillar-caption">Sent 07:00 · Slack and email telemetry</p>
+            </div>
+            <h3 className="home-pillar-title">A diff, not a dashboard</h3>
+            <p className="home-pillar-text">
+              Most mornings it is three lines and nothing to do. You read it because it is short, reporting only verified change.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      {/* Feature Deep Dive */}
+      <section className="home-feature">
+        <div className="home-feature-inner">
+          <div className="home-panel">
+            <div className="home-panel-top">
+              <span>Morning diff · Tuesday</span>
+              <span style={{ color: 'var(--color-primary)' }}>07:00</span>
+            </div>
+            <div className="home-panel-row">
+              <span className="home-panel-sev">Critical</span>
+              <span className="home-panel-txt">paypa1-update.tk · brand spoofing</span>
+              <span className="home-panel-age">11d</span>
+            </div>
+            <div className="home-panel-row">
+              <span className="home-panel-sev home-panel-sev-med">High</span>
+              <span className="home-panel-txt">bit.ly/secure-login · masked URL</span>
+              <span className="home-panel-age">2d</span>
+            </div>
+            <div className="home-panel-row">
+              <span className="home-panel-sev home-panel-sev-low">Medium</span>
+              <span className="home-panel-txt">wildcard certificate expires in 9 days</span>
+              <span className="home-panel-age">new</span>
+            </div>
+            <div className="home-panel-row">
+              <span className="home-panel-sev home-panel-sev-ok">Closed</span>
+              <span className="home-panel-txt">staging-api · credentials revoked</span>
+              <span className="home-panel-age">1d</span>
+            </div>
+            <p className="home-panel-foot">Nothing else changed. 412 assets checked, 0 new domains.</p>
           </div>
 
-          <div className="tier-card tier-mod card-stagger-2">
-            <span className="tier-badge">🟡 MODERATE RISK (35 - 64%)</span>
-            <h3 className="tier-title">Suspicious / Caution</h3>
-            <div className="tier-score-range">Elevated Ambiguity Markers</div>
-            <p className="tier-body">
-              URL shorteners concealing destination targets (bit.ly), excessive subdomain nesting, or disposable TLDs (.xyz, .top)
-              without definitive proof of brand theft.
+          <div>
+            <span className="home-eyebrow">Ownership</span>
+            <h2 className="section-title" style={{ marginBottom: '1rem' }}>
+              Each finding arrives with the team that can close it.
+            </h2>
+            <p style={{ color: 'var(--color-on-surface-secondary)', lineHeight: 1.6 }}>
+              ThreatLens maps every asset back to a repository, cloud account, or administrator — so an incident does not sit unassigned for weeks.
             </p>
-            <ul className="tier-criteria-list">
-              <li>⚠️ Masked destination via URL shortener</li>
-              <li>⚠️ High-abuse or free Top-Level Domain</li>
-              <li>⚠️ Elevated hyphenation ratio in hostname</li>
+            <ul className="home-feature-list">
+              <li className="home-feature-item">
+                <span>Ticket opened in Jira or Linear with complete forensic indicators</span>
+              </li>
+              <li className="home-feature-item">
+                <span>Re-checked continuously; closes automatically when neutralized</span>
+              </li>
+              <li className="home-feature-item">
+                <span>A named security analyst calls you for anything critical, day or night</span>
+              </li>
             </ul>
-          </div>
-
-          <div className="tier-card tier-high card-stagger-3">
-            <span className="tier-badge">🔴 CRITICAL THREAT (65 - 100%)</span>
-            <h3 className="tier-title">Phishing & Credential Theft</h3>
-            <div className="tier-score-range">Active Exploitation Markers</div>
-            <p className="tier-body">
-              Clear brand impersonation on unauthorized domains, direct bare IP hosting with login pages, executable downloads,
-              or Cyrillic homograph attacks.
-            </p>
-            <ul className="tier-criteria-list">
-              <li>🚨 Unauthorized brand trademark spoofing</li>
-              <li>🚨 Bare IP host serving credential prompts</li>
-              <li>🚨 High ML classifier phishing probability (85%+)</li>
-            </ul>
+            <button className="btn btn-outline" onClick={() => onNavigateTab('platform')}>
+              <span>See the Platform</span>
+            </button>
           </div>
         </div>
       </section>
 
-      {/* Core Capabilities */}
-      <section style={{ margin: '4rem 0' }}>
-        <div className="section-header">
-          <div className="section-eyebrow">ENGINE ARCHITECTURE</div>
-          <h2 className="section-title">Enterprise-Grade Cyber Defense Pillars</h2>
-          <p className="section-desc">
-            Combining pre-trained scikit-learn models with dynamic threat intelligence heuristics.
-          </p>
+      {/* Measured Stats */}
+      <section className="home-stats">
+        <h2 className="home-stats-title">Measured across 190 customer perimeters.</h2>
+        <div className="home-stats-grid">
+          <div className="home-stat">
+            <span className="home-stat-val">31%</span>
+            <span className="home-stat-key">of assets we find were unknown to the security team</span>
+          </div>
+          <div className="home-stat">
+            <span className="home-stat-val">4h</span>
+            <span className="home-stat-key">median time from exposure appearing to an owned ticket</span>
+          </div>
+          <div className="home-stat">
+            <span className="home-stat-val">0.8</span>
+            <span className="home-stat-key">false positives per hundred findings, verified by an analyst</span>
+          </div>
+          <div className="home-stat">
+            <span className="home-stat-val">24/7</span>
+            <span className="home-stat-key">analyst cover for confirmed critical exposures</span>
+          </div>
         </div>
+      </section>
 
-        <div className="features-grid">
-          <div className="feature-card card-stagger-1">
-            <div className="feature-icon-box"><ShieldIcon style={{ width: 24, height: 24 }} /></div>
-            <h4 className="feature-title">Dual ML Inference</h4>
-            <p className="feature-desc">
-              TF-IDF CountVectorizer paired with Logistic Regression and Multinomial Naive Bayes trained on 500,000+ real-world URL vectors.
+      {/* System Boundaries */}
+      <section className="home-limits">
+        <span className="home-eyebrow">Boundaries</span>
+        <h2 className="section-title">What we will not do to your systems.</h2>
+        <div className="home-limits-grid">
+          <article className="home-limit">
+            <h3 className="home-limit-title">No exploitation</h3>
+            <p className="home-limit-text">
+              We prove reachability and stop. Nothing is downloaded, written, or brute-forced. Every check is documented.
             </p>
-          </div>
-
-          <div className="feature-card card-stagger-2">
-            <div className="feature-icon-box"><GlobeIcon /></div>
-            <h4 className="feature-title">Brand Impersonation Defense</h4>
-            <p className="feature-desc">
-              Detects typosquatting and deceptive subdomains while whitelist-protecting official domains.
+          </article>
+          <article className="home-limit">
+            <h3 className="home-limit-title">No surprise load</h3>
+            <p className="home-limit-text">
+              Rate limits per host, published scanner ranges, and a pause switch you control.
             </p>
-          </div>
-
-          <div className="feature-card card-stagger-3">
-            <div className="feature-icon-box"><LockIcon /></div>
-            <h4 className="feature-title">Social Engineering NLP</h4>
-            <p className="feature-desc">
-              Dedicated natural language analyzer identifying coercive urgency, fake authority intimidation, and SMS smishing lures.
+          </article>
+          <article className="home-limit">
+            <h3 className="home-limit-title">No scope creep</h3>
+            <p className="home-limit-text">
+              We scan what you confirm as yours. Discovered assets outside boundary are shown to you and left alone.
             </p>
-          </div>
-
-          <div className="feature-card card-stagger-1">
-            <div className="feature-icon-box"><AlertIcon /></div>
-            <h4 className="feature-title">Explainable Indicators</h4>
-            <p className="feature-desc">
-              Every score is backed by point-weighted security indicators detailing exactly why an alert was triggered.
-            </p>
-          </div>
-
-          <div className="feature-card card-stagger-2">
-            <div className="feature-icon-box"><SearchIcon /></div>
-            <h4 className="feature-title">IP & TLD Auditing</h4>
-            <p className="feature-desc">
-              Deep inspection of direct IPv4/IPv6 hosts, non-standard web ports, and high-abuse top-level domains.
-            </p>
-          </div>
-
-          <div className="feature-card card-stagger-3">
-            <div className="feature-icon-box"><CopyIcon /></div>
-            <h4 className="feature-title">SOC-Ready Telemetry</h4>
-            <p className="feature-desc">
-              Centralized SQLite persistence, Firebase authentication, and instant export of detailed incident reports.
-            </p>
-          </div>
+          </article>
         </div>
       </section>
 
       {/* FAQ Accordion */}
-      <section style={{ margin: '4rem 0 2rem' }}>
-        <div className="section-header">
-          <div className="section-eyebrow">SECURITY ADVISORY & FAQ</div>
-          <h2 className="section-title">Frequently Asked Questions</h2>
-        </div>
-
-        <div className="faq-wrap">
-          {[
-            {
-              q: 'Why did the old backend give the same logic for moderate and high risk?',
-              a: 'The previous prototype relied purely on raw model probability without lexical feature decomposition. ThreatLens introduces distinct heuristic layers: Moderate Risk flags structural ambiguity (such as URL shorteners or multiple subdomains), while High Risk requires active phishing indicators (such as brand typosquatting, raw IP credential hosting, or direct payload links).'
-            },
-            {
-              q: 'How does ThreatLens prevent false positives on official domains like paypal.com?',
-              a: 'Machine learning bag-of-words models often penalize the token "paypal" because it appears frequently in phishing databases. ThreatLens includes an authoritative Brand Directory that verifies official apex domains, instantly eliminating false alarms while aggressively catching spoofed variations.'
-            },
-            {
-              q: 'How is data stored separately for each login?',
-              a: 'Each authenticated user or guest analyst has their analyses scoped to their unique account identity in the threat intelligence database. Scans and dashboard telemetry are filtered per login, maintaining strict privacy and personalized threat audit histories.'
-            }
-          ].map((item, idx) => (
-            <div className="faq-item" key={idx}>
-              <button className="faq-question-btn" onClick={() => toggleFaq(idx)}>
-                <span>{item.q}</span>
-                <span>{faqOpen[idx] ? '−' : '+'}</span>
-              </button>
-              {faqOpen[idx] && <div className="faq-answer-body">{item.a}</div>}
+      <section className="home-faq">
+        <span className="home-eyebrow">Before the first call</span>
+        <h2 className="section-title">Questions security teams ask.</h2>
+        <div className="home-faq-list">
+          <details className="home-acc" open>
+            <summary className="home-accordion-trigger">
+              <span>How is this different from our vulnerability scanner?</span>
+              <span>▾</span>
+            </summary>
+            <div className="home-acc-body">
+              A scanner checks the hosts you give it. Our job is the hosts you did not give it — the ones nobody remembers — and then what an attacker could actually reach on them.
             </div>
-          ))}
+          </details>
+          <details className="home-acc">
+            <summary className="home-accordion-trigger">
+              <span>Do you need credentials or an agent?</span>
+              <span>▾</span>
+            </summary>
+            <div className="home-acc-body">
+              Neither. Everything we report is visible from the outside, the way an attacker sees it. Optional read-only cloud access improves ownership mapping.
+            </div>
+          </details>
+          <details className="home-acc">
+            <summary className="home-accordion-trigger">
+              <span>How does ThreatLens prevent false positives on official domains?</span>
+              <span>▾</span>
+            </summary>
+            <div className="home-acc-body">
+              Machine learning bag-of-words models often penalize tokens like "paypal" or "google". ThreatLens includes an authoritative Brand Directory that verifies official apex domains, instantly eliminating false alarms while catching spoofed lookalikes.
+            </div>
+          </details>
+          <details className="home-acc">
+            <summary className="home-accordion-trigger">
+              <span>Can we run the sweep before signing anything?</span>
+              <span>▾</span>
+            </summary>
+            <div className="home-acc-body">
+              Yes. One domain, a scope confirmation by email, and a report within three working days. You keep the report either way.
+            </div>
+          </details>
+        </div>
+      </section>
+
+      {/* Duskline CTA Section */}
+      <section className="home-cta">
+        <div className="home-cta-inner">
+          <h2 className="home-cta-title">Give us one domain. We&apos;ll show you the rest.</h2>
+          <p className="home-cta-text">
+            A free sweep of your external perimeter, with every finding verified by an analyst before it reaches you.
+          </p>
+          <button className="btn btn-primary btn-lg" onClick={() => onNavigateTab('url')}>
+            <span>Book the Free Sweep</span>
+          </button>
+          <span className="home-cta-note">Scope confirmed in writing first · results in three working days</span>
         </div>
       </section>
     </div>
   );
 }
 
-// --- URL Scanner Workspace ---
+// --- Platform View ---
+function PlatformView({ onNavigateTab }) {
+  const [activeTab, setActiveTab] = useState(0);
+
+  return (
+    <div className="scanner-view-container animate-fade">
+      <div style={{ maxWidth: '820px', marginBottom: '3rem' }}>
+        <span className="home-eyebrow">Platform</span>
+        <h1 className="hero-title" style={{ fontSize: '2.8rem', margin: '0.5rem 0 1rem' }}>
+          Four scans, one boundary, no agents.
+        </h1>
+        <p className="hero-subtitle">
+          Everything ThreatLens knows comes from the outside, the way an attacker sees it. Here is what runs, how often, and what we do with the result.
+        </p>
+      </div>
+
+      {/* Scanner Activity Card */}
+      <div className="glass-panel" style={{ maxWidth: '640px', marginBottom: '3.5rem' }}>
+        <span style={{ fontSize: '0.78rem', color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+          Scanner activity · last hour
+        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem' }}>
+            <span>DNS and certificate watch</span>
+            <span style={{ color: 'var(--color-primary)' }}>continuous</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem' }}>
+            <span>Port and service sweep</span>
+            <span style={{ color: 'var(--color-primary)' }}>every 6h</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem' }}>
+            <span>Web surface crawl</span>
+            <span style={{ color: 'var(--color-primary)' }}>daily</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>Credential leak feed</span>
+            <span style={{ color: 'var(--color-primary)' }}>hourly</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Interactive Tabs */}
+      <div style={{ marginBottom: '4rem' }}>
+        <span className="home-eyebrow">What you get on screen</span>
+        <h2 className="section-title" style={{ marginBottom: '2rem' }}>Three views, and nothing you have to assemble.</h2>
+        
+        <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem' }}>
+          {['Inventory', 'Findings', 'Ownership'].map((tabLabel, idx) => (
+            <button
+              key={idx}
+              className={`btn ${activeTab === idx ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() => setActiveTab(idx)}
+            >
+              {tabLabel}
+            </button>
+          ))}
+        </div>
+
+        <div className="glass-panel" style={{ marginTop: '1.5rem', padding: '2rem' }}>
+          {activeTab === 0 && (
+            <div>
+              <h3 style={{ color: '#fff', fontSize: '1.3rem', marginBottom: '0.5rem' }}>Every asset, with how we found it.</h3>
+              <p style={{ color: 'var(--color-on-surface-secondary)', marginBottom: '1.5rem' }}>
+                Domains, hosts, certificates, buckets, mail records and third-party pages carrying your brand.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div className="home-panel-row"><span>known</span><span>api.threatlens.intel</span><span>cert</span></div>
+                <div className="home-panel-row"><span>new</span><span>vpn-2.threatlens.intel</span><span>reverse DNS</span></div>
+                <div className="home-panel-row"><span>related</span><span>nv-group.net</span><span>registrar</span></div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 1 && (
+            <div>
+              <h3 style={{ color: '#fff', fontSize: '1.3rem', marginBottom: '0.5rem' }}>Findings a person has already read.</h3>
+              <p style={{ color: 'var(--color-on-surface-secondary)', marginBottom: '1.5rem' }}>
+                Anything above medium is verified by an analyst before it reaches your queue. False-positive rate is under one per hundred.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div className="home-panel-row"><span className="home-panel-sev">Critical</span><span>Admin console public · jenkins-old</span><span>11d</span></div>
+                <div className="home-panel-row"><span className="home-panel-sev home-panel-sev-med">High</span><span>Bucket listing enabled · assets</span><span>2d</span></div>
+                <div className="home-panel-row"><span className="home-panel-sev home-panel-sev-low">Medium</span><span>Certificate expiring in 9 days</span><span>new</span></div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 2 && (
+            <div>
+              <h3 style={{ color: '#fff', fontSize: '1.3rem', marginBottom: '0.5rem' }}>Who has to fix it, decided before the ticket.</h3>
+              <p style={{ color: 'var(--color-on-surface-secondary)', marginBottom: '1.5rem' }}>
+                Assets map to repositories, cloud accounts, and the people who last touched them.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div className="home-panel-row"><span>platform-team</span><span>jenkins-old</span><span>SEC-4192</span></div>
+                <div className="home-panel-row"><span>web-team</span><span>assets</span><span>SEC-4193</span></div>
+                <div className="home-panel-row"><span style={{ color: '#ef4444' }}>needs owner</span><span>legacy-shop</span><span>UNCLAIMED</span></div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Pricing View ---
+function PricingView({ onNavigateTab }) {
+  return (
+    <div className="scanner-view-container animate-fade">
+      <div style={{ maxWidth: '820px', marginBottom: '3.5rem' }}>
+        <span className="home-eyebrow">Pricing</span>
+        <h1 className="hero-title" style={{ fontSize: '2.8rem', margin: '0.5rem 0 1rem' }}>
+          Per asset, per month. You see the count before you sign.
+        </h1>
+        <p className="hero-subtitle">
+          The free sweep tells you how many internet-facing assets you actually have. That number is the price.
+        </p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '2rem', marginBottom: '4rem' }}>
+        <article className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <h2 style={{ color: '#fff', fontSize: '1.5rem' }}>Sweep</h2>
+          <p style={{ color: 'var(--color-on-surface-secondary)', fontSize: '0.88rem' }}>One perimeter, once. Keep the report either way.</p>
+          <div style={{ fontSize: '2.6rem', fontWeight: 700, color: '#fff' }}>Free</div>
+          <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.88rem', color: 'var(--color-on-surface-secondary)' }}>
+            <li>✓ Full external discovery on one domain</li>
+            <li>✓ Analyst-verified critical findings</li>
+            <li>✓ Written report in three working days</li>
+            <li>✓ No account, no credit card required</li>
+          </ul>
+          <button className="btn btn-outline" style={{ marginTop: 'auto' }} onClick={() => onNavigateTab('url')}>Book the Sweep</button>
+        </article>
+
+        <article className="glass-panel" style={{ borderColor: 'var(--color-primary)', display: 'flex', flexDirection: 'column', gap: '1rem', background: 'linear-gradient(180deg, rgba(0, 242, 254, 0.08), var(--color-surface-panel))' }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--color-primary)', textTransform: 'uppercase', fontWeight: 700 }}>Most Teams</span>
+          <h2 style={{ color: '#fff', fontSize: '1.5rem' }}>Watch</h2>
+          <p style={{ color: 'var(--color-on-surface-secondary)', fontSize: '0.88rem' }}>Continuous monitoring with the morning diff and ticketing.</p>
+          <div>
+            <span style={{ fontSize: '2.6rem', fontWeight: 700, color: '#fff' }}>€1.90</span>
+            <span style={{ fontSize: '0.82rem', color: 'var(--color-on-surface-dim)', marginLeft: '0.5rem' }}>per asset / month</span>
+          </div>
+          <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.88rem', color: 'var(--color-on-surface-secondary)' }}>
+            <li>✓ All six surfaces scanned continuously</li>
+            <li>✓ Analyst verification above medium severity</li>
+            <li>✓ Ownership mapping and automatic tickets</li>
+            <li>✓ Slack, Teams, Jira, Linear and API access</li>
+            <li>✓ Unlimited users — security is not per seat</li>
+          </ul>
+          <button className="btn btn-primary" style={{ marginTop: 'auto' }} onClick={() => onNavigateTab('url')}>Get a Quote</button>
+        </article>
+
+        <article className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <h2 style={{ color: '#fff', fontSize: '1.5rem' }}>Watch + Response</h2>
+          <p style={{ color: 'var(--color-on-surface-secondary)', fontSize: '0.88rem' }}>For teams without a night shift of their own.</p>
+          <div>
+            <span style={{ fontSize: '2.6rem', fontWeight: 700, color: '#fff' }}>€3.40</span>
+            <span style={{ fontSize: '0.82rem', color: 'var(--color-on-surface-dim)', marginLeft: '0.5rem' }}>per asset / month</span>
+          </div>
+          <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.88rem', color: 'var(--color-on-surface-secondary)' }}>
+            <li>✓ Everything in Watch</li>
+            <li>✓ 24/7 analyst call-out on confirmed criticals</li>
+            <li>✓ Containment guidance while on the phone</li>
+            <li>✓ Quarterly review with named analyst</li>
+          </ul>
+          <button className="btn btn-outline" style={{ marginTop: 'auto' }} onClick={() => onNavigateTab('url')}>Talk to Us</button>
+        </article>
+      </div>
+    </div>
+  );
+}
+
+// --- Deep URL Threat Inspection View ---
 function UrlScannerView({ initialUrl = '', onScanComplete, userEmail }) {
   const [urlInput, setUrlInput] = useState(initialUrl);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (initialUrl) {
@@ -782,7 +971,7 @@ function UrlScannerView({ initialUrl = '', onScanComplete, userEmail }) {
         body: JSON.stringify({ value: target, user_email: userEmail })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Analysis failed');
+      if (!res.ok) throw new Error(data.error || 'Inspection failed');
       setResult(data);
       if (onScanComplete) onScanComplete();
     } catch (err) {
@@ -792,47 +981,41 @@ function UrlScannerView({ initialUrl = '', onScanComplete, userEmail }) {
     }
   }
 
-  function handleCopyReport() {
-    if (!result) return;
-    const summary = `[ThreatLens Threat Report]\nURL: ${result.value}\nVerdict: ${result.verdict}\nRisk Level: ${result.risk_level} (${result.risk_score}%)\nCategory: ${result.threat_category}\nConfidence: ${result.confidence}%\nRecommendation: ${result.metadata?.recommendation}`;
-    navigator.clipboard.writeText(summary);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
   const samplePresets = [
     { label: 'Google (Legitimate)', url: 'https://www.google.com' },
-    { label: 'PayPal (Official)', url: 'https://paypal.com/signin' },
-    { label: 'Bitly (Shortener)', url: 'http://bit.ly/secure-login-392' },
-    { label: 'Paypal Typosquat', url: 'http://paypal-security-update.tk/login.php' },
-    { label: 'Bare IP Host', url: 'http://192.168.1.100/paypal-verification.php?user=login' },
-    { label: 'Subdomain Stacking', url: 'https://appleid.apple.com.verify-billing-notice.xyz/account' }
+    { label: 'MahaDBT (Gov)', url: 'https://mahadbt.maharashtra.gov.in' },
+    { label: 'MahaDBT Fake (.xyz)', url: 'https://mahadbt.xyz' },
+    { label: 'Bhulekh 7/12 (Gov)', url: 'https://bhulekh.mahabhumi.gov.in' },
+    { label: 'Bhulekh Fake (.site)', url: 'https://bhulekh-mahabhumi.site' },
+    { label: 'Sarathi DL (Gov)', url: 'https://sarathi.parivahan.gov.in' },
+    { label: 'Sarathi Fake (.hn)', url: 'https://sarathi-parivahan.hn' },
+    { label: 'FitGirl (Official)', url: 'https://fitgirl-repacks.site' },
+    { label: 'FitGirl Clone (.to)', url: 'https://fitgirl-repacks.to' },
+    { label: 'PayPal Spoof', url: 'http://paypal-security-update.tk/login.php' }
   ];
 
   return (
-    <div className="scanner-view-container page-enter-anim">
+    <div className="scanner-view-container animate-fade">
       <div className="scanner-view-header">
-        <h2>Deep URL Threat Inspection</h2>
-        <p style={{ color: 'var(--text-muted)' }}>
+        <span className="home-eyebrow">Deep Analysis</span>
+        <h2 className="section-title">Deep URL Threat Inspection</h2>
+        <p style={{ color: 'var(--color-on-surface-secondary)' }}>
           Evaluate domains for brand masquerading, direct IP hosting, suspicious TLDs, and lexical anomalies.
         </p>
       </div>
 
-      <div className="scanner-form-box">
-        <div className="input-label-row">
-          <span>Target Website URL</span>
-          <span>HTTP / HTTPS Auto-Normalized</span>
-        </div>
+      <div className="glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem' }}>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <input
-            className="scanner-text-input"
+            className="hero-search-input-field"
+            style={{ background: 'var(--color-surface)', padding: '0.75rem 1rem', borderRadius: 8, border: '1px solid var(--color-border)' }}
             placeholder="e.g. https://secure-login-portal.com or paste full URL"
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && executeScan()}
           />
           <button
-            className="btn-primary"
+            className="btn btn-primary"
             onClick={() => executeScan()}
             disabled={loading || !urlInput.trim()}
           >
@@ -841,11 +1024,11 @@ function UrlScannerView({ initialUrl = '', onScanComplete, userEmail }) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>PRESETS:</span>
+          <span style={{ fontSize: '0.75rem', color: 'var(--color-on-surface-dim)', fontWeight: 600 }}>PRESETS:</span>
           {samplePresets.map((p, idx) => (
             <button
               key={idx}
-              className="pill-badge-btn"
+              className="preset-pill"
               onClick={() => {
                 setUrlInput(p.url);
                 executeScan(p.url);
@@ -857,172 +1040,147 @@ function UrlScannerView({ initialUrl = '', onScanComplete, userEmail }) {
         </div>
       </div>
 
-      {result && result.error && (
-        <div className="auth-error-banner">{result.error}</div>
-      )}
-
-      {result && !result.error && (
-        <div className="result-card-container">
-          <div className={`verdict-banner-card level-${result.risk_level.toLowerCase()}`}>
-            <div className="verdict-info-col">
-              <div className="verdict-badges-wrap" style={{ marginBottom: '0.5rem' }}>
-                <span className={`threat-level-tag tag-${result.risk_level.toLowerCase()}`}>
-                  {result.risk_level} RISK
-                </span>
-                <span className="category-tag">{result.threat_category}</span>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-                  Confidence: {result.confidence}%
-                </span>
-              </div>
-              <h3>{result.verdict}</h3>
-              <div className="verdict-target-text">{result.value}</div>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                {result.metadata?.recommendation}
-              </p>
+      {result && (
+        <div>
+          {result.error ? (
+            <div style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', padding: '1rem', borderRadius: 8 }}>
+              {result.error}
             </div>
-            <ScoreGauge score={result.risk_score} riskLevel={result.risk_level} />
-          </div>
-
-          <div className="analysis-columns-grid">
-            <div className="glass-panel" style={{ padding: '1.75rem' }}>
-              <div className="analysis-card-title">
-                <GlobeIcon />
-                <span>Domain & Structural Intelligence</span>
-              </div>
-
-              <div className="meta-chips-grid">
-                <div className="meta-chip">
-                  <span className="meta-chip-label">Hostname</span>
-                  <span className="meta-chip-val">{result.metadata?.host || 'N/A'}</span>
+          ) : (
+            <div className="analysis-columns-grid">
+              <div className="glass-panel">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                  <h3 style={{ color: '#fff', fontSize: '1.25rem' }}>Threat Assessment</h3>
+                  <span className={`threat-level-tag tag-${result.risk_level.toLowerCase()}`}>{result.risk_level} RISK</span>
                 </div>
-                <div className="meta-chip">
-                  <span className="meta-chip-label">Top Level Domain</span>
-                  <span className="meta-chip-val">.{result.metadata?.tld || 'N/A'}</span>
-                </div>
-                <div className="meta-chip">
-                  <span className="meta-chip-label">Protocol</span>
-                  <span className="meta-chip-val" style={{ color: result.metadata?.has_https ? '#34d399' : '#f87171' }}>
-                    {result.metadata?.scheme?.toUpperCase() || 'HTTPS'}
-                  </span>
-                </div>
-                <div className="meta-chip">
-                  <span className="meta-chip-label">Subdomain Depth</span>
-                  <span className="meta-chip-val">{result.metadata?.subdomain_count || 0} Levels</span>
-                </div>
-                <div className="meta-chip">
-                  <span className="meta-chip-label">Direct IP Host</span>
-                  <span className="meta-chip-val" style={{ color: result.metadata?.is_ip ? '#f87171' : '#34d399' }}>
-                    {result.metadata?.is_ip ? 'YES (Bare IP)' : 'NO (DNS Registered)'}
-                  </span>
-                </div>
-                <div className="meta-chip">
-                  <span className="meta-chip-label">URL Shortener</span>
-                  <span className="meta-chip-val" style={{ color: result.metadata?.is_shortener ? '#fbbf24' : '#34d399' }}>
-                    {result.metadata?.is_shortener ? 'YES (Obfuscated)' : 'NO (Direct)'}
-                  </span>
-                </div>
-              </div>
-
-              <div style={{ marginTop: '1.25rem', padding: '0.85rem 1rem', background: 'var(--bg-input)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', textTransform: 'uppercase', display: 'block', marginBottom: '0.25rem' }}>
-                  Brand Authenticity Audit
-                </span>
-                <span style={{ fontSize: '0.88rem', fontWeight: 600, color: result.metadata?.is_official_brand ? '#34d399' : result.metadata?.is_brand_spoof ? '#f87171' : '#94a3b8' }}>
-                  {result.metadata?.is_official_brand
-                    ? `✓ Verified Official Domain for ${result.metadata.detected_brand?.toUpperCase()}`
-                    : result.metadata?.is_brand_spoof
-                    ? `🚨 UNAUTHORIZED BRAND SPOOFING TARGETING ${result.metadata.detected_brand?.toUpperCase()}`
-                    : 'No Brand Impersonation Markers Detected'}
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
-                <button className="btn-secondary" onClick={handleCopyReport}>
-                  <CopyIcon />
-                  <span>{copied ? 'Copied to Clipboard!' : 'Copy Incident Report'}</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="glass-panel" style={{ padding: '1.75rem' }}>
-              <div className="analysis-card-title">
-                <AlertIcon />
-                <span>Explainable Threat Indicators ({result.risks?.length || 0})</span>
-              </div>
-
-              <div className="indicators-list">
-                {result.risks?.map((ind, idx) => (
-                  <div className="indicator-row-item" key={idx}>
-                    <div className="indicator-top-line">
-                      <span className="indicator-name">{ind.name}</span>
-                      <span className={`indicator-severity-badge sev-${ind.severity.toLowerCase()}`}>
-                        {ind.severity} {ind.score_impact > 0 ? `+${ind.score_impact}` : ''}
-                      </span>
-                    </div>
-                    <p className="indicator-desc-text">{ind.description}</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                  <ScoreGauge score={result.risk_score} riskLevel={result.risk_level} />
+                  <div>
+                    <h4 style={{ color: '#fff', fontSize: '1.1rem' }}>{result.verdict}</h4>
+                    <p style={{ color: 'var(--color-on-surface-secondary)', fontSize: '0.85rem', marginTop: '0.35rem' }}>
+                      {result.metadata?.recommendation}
+                    </p>
                   </div>
-                ))}
+                </div>
+              </div>
+
+              <div className="glass-panel">
+                <h3 style={{ color: '#fff', fontSize: '1.25rem', marginBottom: '1rem' }}>
+                  Indicators Observed ({result.risks?.length || 0})
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {result.risks?.map((r, i) => (
+                    <div key={i} style={{ background: 'rgba(0, 0, 0, 0.25)', padding: '0.75rem 1rem', borderRadius: 8, borderLeft: `3px solid ${r.severity === 'CRITICAL' ? '#ef4444' : r.severity === 'HIGH' ? '#f87171' : r.severity === 'MEDIUM' ? '#f59e0b' : '#10b981'}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '0.85rem' }}>
+                        <span style={{ color: '#fff' }}>{r.name}</span>
+                        <span style={{ color: r.score_impact < 0 ? '#10b981' : '#f59e0b' }}>{r.score_impact > 0 ? `+${r.score_impact}` : r.score_impact} pts</span>
+                      </div>
+                      <p style={{ fontSize: '0.78rem', color: 'var(--color-on-surface-secondary)', marginTop: '0.25rem' }}>{r.description}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-// --- Messages & Social Engineering Workspace ---
-function MessagesScannerView({ onScanComplete, userEmail }) {
+// --- Social Engineering NLP Scanner (Email & SMS) ---
+function MessagesScannerView({ userEmail }) {
   const [kind, setKind] = useState('email');
-  const [textInput, setTextInput] = useState('');
+  const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
 
-  const presets = {
-    email: [
-      {
-        title: 'Account Suspension Lure',
-        text: 'Dear customer, your bank account access has been suspended due to unauthorized activity. Please verify your identity immediately by clicking here: http://chase-security-verify.xyz or your account will be permanently closed within 24 hours.'
-      },
-      {
-        title: 'Crypto Lottery Scam',
-        text: 'Congratulations! You have won a Bitcoin cash prize reward of 1.5 BTC from the international crypto lottery. Reply with your one-time code and bank details to claim your prize immediately.'
-      },
-      {
-        title: 'Legitimate Order Receipt',
-        text: 'Hello Alex, thank you for your recent purchase at Digital Books. Your order #48291 has been confirmed and is being prepared for shipment. You can track your order status in your account.'
-      }
-    ],
-    sms: [
-      {
-        title: 'USPS Delivery Fee Trap',
-        text: 'USPS Alert: Your package could not be delivered due to incomplete address. Please update your details and pay $1.99 redelivery fee at http://usps-redelivery-update.top to prevent return.'
-      },
-      {
-        title: 'Bank Fraud OTP Phishing',
-        text: 'Wells Fargo: Did you attempt a transfer of $850.00? If NO, tap http://wells-dispute-auth.icu and enter your SMS OTP code immediately to cancel.'
-      },
-      {
-        title: 'Standard Appointment SMS',
-        text: 'Hi Sarah, this is a reminder of your dental appointment tomorrow at 10:00 AM. Reply YES to confirm or CALL to reschedule.'
-      }
-    ]
-  };
+  const emailPresets = [
+    {
+      label: 'CEO Wire Fraud (Header + Delimiter BEC)',
+      text: "Subject: 🚩 URGENT — Wire needed before 3:00 PM today\nFrom: Michael Reyes, CEO <m.reyes.ceo@northwind-holdings.co>\nTo: Jordan Ellis <jellis@northwindholdings.com>\nTime: Today, 1:47 PM\n\nJordan,\nI need you to process a wire transfer of $48,750.00 to a new vendor. It has to go out before 3:00 PM today or we lose the deal.\nThis is strictly confidential. Please don't mention it to anyone else on the team, including finance, until we announce.\nI'm in back-to-back meetings and can't take calls. Just reply here once it's sent. Banking details are attached.\n\nMichael"
+    },
+    {
+      label: 'Google Sign-in Alert (Authentic)',
+      text: "From: Google <no-reply@accounts.google.com>\nTo: Alex Mercer <alex.mercer@gmail.com>\nSubject: Security alert: new sign-in on Windows\n\nSecurity alert: new sign-in on Windows\nDevice: Windows, Chrome\nLocation: Mumbai, India\nTime: Today, 10:14 PM\n\nIf this was you, you don't need to do anything.\nIf this wasn't you, check activity at https://myaccount.google.com/notifications."
+    },
+    {
+      label: 'Google Password Expiry (Phishing)',
+      text: "From: Google Support <support@google-accounts.xyz>\nTo: Alex Mercer <alex.mercer@gmail.com>\nSubject: Security Warning: Confirm your password\n\nYour Google account password has expired. Confirm your current password within 24 hours to prevent account deletion:\nhttp://google-verify-password.site"
+    },
+    {
+      label: 'Steam Guard Code (Authentic)',
+      text: "From: Steam Support <noreply@steampowered.com>\nTo: GamerX <gamerx@gmail.com>\nSubject: Your Steam account: Access from new web or mobile device\n\nDear GamerX,\nHere is the Steam Guard code you need that will allow you to log in to your Steam account:\nRD72M\n\nComputer name: DESKTOP-GAMER\nCity: Pune, India\n\nIf you are not attempting to log in, you can safely ignore this email.\nSteam Support will never ask for your password or Steam Guard code.\nNeed help? https://help.steampowered.com"
+    },
+    {
+      label: 'Steam Duping Ban (Phishing)',
+      text: "From: Valve Steam Admin <admin@steam-valve.xyz>\nTo: GamerX <gamerx@gmail.com>\nSubject: Steam Community Ban Notice\n\nYour Steam account has been reported for illegal item duping. Confirm your current password and Steam Guard code to avoid a permanent ban:\nhttp://steamcommunity-trade.top"
+    },
+    {
+      label: 'Microsoft Security Code (Authentic)',
+      text: "From: Microsoft account team <account-security-noreply@accountprotection.microsoft.com>\nTo: Sarah <sarah@outlook.com>\nSubject: Microsoft account security code\n\nMicrosoft account security code\nWe received your request for a single-use code to use with your Microsoft account.\nYour code is: 849201\n\nIf you didn't request this code, you can safely ignore this email. Someone might have typed your email address by mistake.\nhttps://account.live.com"
+    },
+    {
+      label: 'Amazon Password OTP (Authentic)',
+      text: "From: Amazon.com <account-update@amazon.com>\nTo: David <david@gmail.com>\nSubject: Amazon password assistance\n\nTo authenticate, please use the following One-Time Password (OTP):\n742918\n\nDo not share this OTP with anyone. Amazon customer service will never ask you for your password or OTP."
+    },
+    {
+      label: 'Amazon $500 Credit Bait (Phishing)',
+      text: "From: Amazon Rewards <rewards@amazon-bonus-claim.xyz>\nTo: David <david@gmail.com>\nSubject: Account Notice: $500 Credit Issued\n\nAmazon Notification: $500 cash balance has been credited to your account wallet. Click here to claim your cash refund:\nhttp://amazon-cash-refund.xyz"
+    },
+    {
+      label: 'Steam Summer Sale (Promo)',
+      text: "From: Steam Support <noreply@steampowered.com>\nTo: GamerX <gamerx@gmail.com>\nSubject: The Steam Summer Sale is here!\n\nThe Steam Summer Sale is now live! Save up to 80% on thousands of games on your wishlist. Shop now before July 11th.\nUnsubscribe here."
+    },
+    {
+      label: 'CEO Payroll Fraud (BEC)',
+      text: "Are you at your desk? I'm in a conference and can't take calls. Need you to update my direct deposit bank routing info before payroll cutoff today."
+    },
+    {
+      label: 'Account Termination Panic',
+      text: "Your financial account will be suspended within 24 hours due to suspicious activity. Verify your password and 2FA code immediately."
+    },
+    {
+      label: 'Normal Team Sync (Clean)',
+      text: "Hey team, quick reminder about our project sync tomorrow at 10 AM. Please review the agenda doc before the call."
+    }
+  ];
 
-  async function handleAnalyze() {
-    if (!textInput.trim()) return;
+  const smsPresets = [
+    {
+      label: 'Electricity Cutoff Extortion',
+      text: "Dear Consumer, your electricity power will be disconnected tonight at 9:30 PM because previous month bill was not updated. Call electricity officer immediately."
+    },
+    {
+      label: 'USPS Package Redelivery',
+      text: "USPS: Your package could not be delivered due to incomplete street address. Update details and pay $1.99 redelivery fee at bit.ly/usps-redelivery"
+    },
+    {
+      label: 'Bank OTP Verification Scam',
+      text: "Your card ending in 4921 has been blocked. Click here to confirm your 2FA OTP code and CVV to restore access."
+    },
+    {
+      label: 'Meeting Reminder (Clean)',
+      text: "Hey, are you free for lunch today at 1 PM near the cafeteria?"
+    }
+  ];
+
+  const currentPresets = kind === 'email' ? emailPresets : smsPresets;
+
+  async function handleAnalyze(overrideText) {
+    const val = (typeof overrideText === 'string' ? overrideText : text).trim();
+    if (!val) return;
     setLoading(true);
     setResult(null);
     try {
       const res = await fetch(`${API_BASE}/api/analyze/${kind}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: textInput, user_email: userEmail })
+        body: JSON.stringify({ value: val, user_email: userEmail })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Message analysis failed');
+      if (!res.ok) throw new Error(data.error || 'Inspection failed');
       setResult(data);
-      if (onScanComplete) onScanComplete();
     } catch (err) {
       setResult({ error: err.message });
     } finally {
@@ -1031,132 +1189,148 @@ function MessagesScannerView({ onScanComplete, userEmail }) {
   }
 
   return (
-    <div className="scanner-view-container page-enter-anim">
+    <div className="scanner-view-container animate-fade">
       <div className="scanner-view-header">
-        <h2>Social Engineering & Phishing NLP Analyzer</h2>
-        <p style={{ color: 'var(--text-muted)' }}>
-          Scan suspicious Emails and SMS messages for artificial urgency, credential harvesting, delivery smishing, and fake authority.
+        <span className="home-eyebrow">Natural Language Processing</span>
+        <h2 className="section-title">Social Engineering Threat Analyzer</h2>
+        <p style={{ color: 'var(--color-on-surface-secondary)' }}>
+          Detect hyper-personalized spear phishing, CEO wire fraud, credential harvesting, and urgent coercive pressure.
         </p>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem' }}>
-        <button
-          className={`btn-secondary ${kind === 'email' ? 'active' : ''}`}
-          style={{ borderColor: kind === 'email' ? 'var(--cyan)' : 'var(--border-subtle)', background: kind === 'email' ? 'rgba(0,242,254,0.1)' : '' }}
-          onClick={() => { setKind('email'); setResult(null); }}
-        >
-          Email Phishing Analyzer
-        </button>
-        <button
-          className={`btn-secondary ${kind === 'sms' ? 'active' : ''}`}
-          style={{ borderColor: kind === 'sms' ? 'var(--cyan)' : 'var(--border-subtle)', background: kind === 'sms' ? 'rgba(0,242,254,0.1)' : '' }}
-          onClick={() => { setKind('sms'); setResult(null); }}
-        >
-          SMS Smishing Analyzer
-        </button>
-      </div>
-
-      <div className="scanner-form-box">
-        <div className="input-label-row">
-          <span>Paste {kind.toUpperCase()} Content</span>
-          <span>{textInput.length} Characters · {textInput.trim() ? textInput.trim().split(/\s+/).length : 0} Words</span>
+      <div className="glass-panel" style={{ padding: '1.75rem', marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
+          <button
+            className={`btn ${kind === 'email' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => {
+              setKind('email');
+              setResult(null);
+            }}
+          >
+            ✉️ Email Inspection
+          </button>
+          <button
+            className={`btn ${kind === 'sms' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => {
+              setKind('sms');
+              setResult(null);
+            }}
+          >
+            📱 SMS Smishing Inspection
+          </button>
         </div>
 
         <textarea
-          className="scanner-textarea"
-          placeholder={`Paste unverified ${kind.toUpperCase()} content here to inspect for social engineering...`}
-          value={textInput}
-          onChange={(e) => setTextInput(e.target.value)}
+          rows={6}
+          style={{ width: '100%', background: 'var(--color-surface)', color: '#fff', border: '1px solid var(--color-border)', borderRadius: 8, padding: '1rem', outline: 'none', fontFamily: 'inherit', fontSize: '0.95rem' }}
+          placeholder={kind === 'email' ? "Paste full email text or lure message here..." : "Paste SMS smishing message here..."}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
         />
 
-        <div className="scanner-submit-bar">
-          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', alignSelf: 'center', fontWeight: 600 }}>PRESETS:</span>
-            {presets[kind].map((p, idx) => (
-              <button
-                key={idx}
-                className="pill-badge-btn"
-                onClick={() => setTextInput(p.text)}
-              >
-                {p.title}
-              </button>
-            ))}
-          </div>
-
-          <button
-            className="btn-primary"
-            onClick={handleAnalyze}
-            disabled={loading || !textInput.trim()}
-          >
-            {loading ? 'Evaluating…' : `Scan ${kind.toUpperCase()}`}
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--color-on-surface-dim)', fontWeight: 600 }}>QUICK PRESETS:</span>
+          {currentPresets.map((p, idx) => (
+            <button
+              key={idx}
+              className="preset-pill"
+              onClick={() => {
+                setText(p.text);
+                handleAnalyze(p.text);
+              }}
+            >
+              {p.label}
+            </button>
+          ))}
         </div>
+
+        <button
+          className="btn btn-primary"
+          style={{ marginTop: '1.25rem' }}
+          onClick={() => handleAnalyze()}
+          disabled={loading || !text.trim()}
+        >
+          {loading ? 'Analyzing Content...' : 'Inspect Message'}
+        </button>
       </div>
 
-      {result && result.error && (
-        <div className="auth-error-banner">{result.error}</div>
-      )}
-
-      {result && !result.error && (
-        <div className="result-card-container">
-          <div className={`verdict-banner-card level-${result.risk_level.toLowerCase()}`}>
-            <div className="verdict-info-col">
-              <div className="verdict-badges-wrap" style={{ marginBottom: '0.5rem' }}>
-                <span className={`threat-level-tag tag-${result.risk_level.toLowerCase()}`}>
-                  {result.risk_level} RISK
-                </span>
-                <span className="category-tag">{result.threat_category}</span>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-                  Confidence: {result.confidence}%
-                </span>
-              </div>
-              <h3>{result.verdict}</h3>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                {result.metadata?.recommendation}
-              </p>
+      {result && (
+        <div>
+          {result.error ? (
+            <div style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', color: '#fca5a5', padding: '1.25rem', borderRadius: 8 }}>
+              <strong>Analysis Error:</strong> {result.error}
             </div>
-            <ScoreGauge score={result.risk_score} riskLevel={result.risk_level} />
-          </div>
-
-          <div className="glass-panel" style={{ padding: '1.75rem' }}>
-            <div className="analysis-card-title">
-              <AlertIcon />
-              <span>Social Engineering Indicators Triggered ({result.risks?.length || 0})</span>
-            </div>
-
-            <div className="indicators-list">
-              {result.risks?.map((ind, idx) => (
-                <div className="indicator-row-item" key={idx}>
-                  <div className="indicator-top-line">
-                    <span className="indicator-name">{ind.name}</span>
-                    <span className={`indicator-severity-badge sev-${ind.severity.toLowerCase()}`}>
-                      {ind.severity} +{ind.score_impact} PTS
+          ) : (
+            <div className="analysis-columns-grid">
+              <div className="glass-panel">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <h3 style={{ color: '#fff', fontSize: '1.25rem' }}>Threat Assessment</h3>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', borderRadius: 4, background: 'rgba(255, 255, 255, 0.1)', color: '#fff' }}>
+                      {result.threat_category}
+                    </span>
+                    <span className={`threat-level-tag tag-${result.risk_level.toLowerCase()}`}>
+                      {result.risk_level} RISK
                     </span>
                   </div>
-                  <p className="indicator-desc-text">{ind.description}</p>
                 </div>
-              ))}
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                  <ScoreGauge score={result.risk_score} riskLevel={result.risk_level} />
+                  <div>
+                    <h4 style={{ color: '#fff', fontSize: '1.15rem' }}>{result.verdict}</h4>
+                    <p style={{ color: 'var(--color-on-surface-secondary)', fontSize: '0.85rem', marginTop: '0.4rem', lineHeight: '1.45' }}>
+                      {result.metadata?.recommendation}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="glass-panel">
+                <h3 style={{ color: '#fff', fontSize: '1.25rem', marginBottom: '1rem' }}>
+                  Indicators Observed ({result.risks?.length || 0})
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {result.risks?.map((r, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        background: 'rgba(0, 0, 0, 0.25)',
+                        padding: '0.75rem 1rem',
+                        borderRadius: 8,
+                        borderLeft: `3px solid ${r.severity === 'CRITICAL' ? '#ef4444' : r.severity === 'HIGH' ? '#f87171' : r.severity === 'MEDIUM' ? '#f59e0b' : '#10b981'}`
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '0.85rem' }}>
+                        <span style={{ color: '#fff' }}>{r.name}</span>
+                        <span style={{ color: r.score_impact < 0 ? '#10b981' : '#f59e0b' }}>
+                          {r.score_impact > 0 ? `+${r.score_impact}` : r.score_impact} pts
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '0.78rem', color: 'var(--color-on-surface-secondary)', marginTop: '0.25rem' }}>
+                        {r.description}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-// --- Dashboard Component (Per-User Filtered Telemetry with 3 Attractive Cyber Charts) ---
+// --- Live SOC Dashboard & Telemetry ---
 function DashboardView({ onSelectScan, userEmail }) {
   const [data, setData] = useState(null);
-  const [filterQuery, setFilterQuery] = useState('');
-  const [levelFilter, setLevelFilter] = useState('ALL');
   const [loading, setLoading] = useState(true);
+  const [filterQuery, setFilterQuery] = useState('');
 
   const fetchDashboard = () => {
     setLoading(true);
-    const url = userEmail
-      ? `${API_BASE}/api/dashboard?user=${encodeURIComponent(userEmail)}`
-      : `${API_BASE}/api/dashboard`;
-
+    const url = userEmail ? `${API_BASE}/api/dashboard?user=${encodeURIComponent(userEmail)}` : `${API_BASE}/api/dashboard`;
     fetch(url)
       .then((r) => r.json())
       .then((d) => {
@@ -1164,7 +1338,7 @@ function DashboardView({ onSelectScan, userEmail }) {
         setLoading(false);
       })
       .catch((e) => {
-        console.warn('Dashboard fetch error:', e);
+        console.error(e);
         setLoading(false);
       });
   };
@@ -1173,539 +1347,274 @@ function DashboardView({ onSelectScan, userEmail }) {
     fetchDashboard();
   }, [userEmail]);
 
-  async function handleDeleteScan(id, e) {
-    e.stopPropagation();
-    try {
-      await fetch(`${API_BASE}/api/scan/${id}`, { method: 'DELETE' });
-      fetchDashboard();
-    } catch (err) {
-      console.warn('Delete scan error:', err);
-    }
-  }
-
   const filteredScans = useMemo(() => {
     if (!data?.recent) return [];
-    return data.recent.filter((item) => {
-      const matchText = (item.value || '').toLowerCase().includes(filterQuery.toLowerCase()) ||
-        (item.threat_category || '').toLowerCase().includes(filterQuery.toLowerCase());
-      const matchLevel = levelFilter === 'ALL' || item.risk_level === levelFilter;
-      return matchText && matchLevel;
-    });
-  }, [data, filterQuery, levelFilter]);
+    if (!filterQuery.trim()) return data.recent;
+    return data.recent.filter((s) => s.value.toLowerCase().includes(filterQuery.toLowerCase()) || s.verdict.toLowerCase().includes(filterQuery.toLowerCase()));
+  }, [data, filterQuery]);
 
-  if (loading && !data) {
-    return (
-      <div style={{ textAlign: 'center', padding: '4rem 0' }}>
-        <p style={{ color: 'var(--text-muted)' }}>Loading real-time threat intelligence telemetry…</p>
+  const doughnutData = useMemo(() => {
+    if (!data) return null;
+    return {
+      labels: ['Critical', 'High', 'Moderate', 'Low Risk'],
+      datasets: [
+        {
+          data: [data.critical || 0, data.high || 0, data.moderate || 0, data.low || 0],
+          backgroundColor: ['#ef4444', '#f87171', '#f59e0b', '#10b981'],
+          borderWidth: 0
+        }
+      ]
+    };
+  }, [data]);
+
+  return (
+    <div className="scanner-view-container animate-fade">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+        <div>
+          <span className="home-eyebrow">Real-Time Telemetry</span>
+          <h2 className="section-title">SOC Threat Intelligence Feed</h2>
+          <p style={{ color: 'var(--color-on-surface-secondary)' }}>
+            Scoped to account: <span style={{ color: 'var(--color-primary)' }}>{userEmail}</span>
+          </p>
+        </div>
+        <button className="btn btn-outline" onClick={fetchDashboard}>↻ Refresh Feed</button>
       </div>
-    );
-  }
 
-  // 1. Doughnut: Threat Severity Spectrum
-  const doughnutData = {
-    labels: ['Safe / Low Risk', 'Moderate / Caution', 'High & Critical Phishing'],
-    datasets: [
-      {
-        data: [data?.low || 0, data?.moderate || 0, (data?.high || 0) + (data?.critical || 0)],
-        backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
-        hoverBackgroundColor: ['#34d399', '#fbbf24', '#ff6b6b'],
-        borderColor: '#0a1122',
-        borderWidth: 3,
-        hoverOffset: 6
-      }
-    ]
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--color-on-surface-dim)' }}>Loading real-time telemetry…</div>
+      ) : (
+        <div>
+          <div className="home-stats-grid" style={{ marginBottom: '2.5rem' }}>
+            <div className="home-stat"><span className="home-stat-val">{data?.total || 0}</span><span className="home-stat-key">Total Threat Audits</span></div>
+            <div className="home-stat"><span className="home-stat-val" style={{ color: '#ef4444' }}>{data?.critical || 0}</span><span className="home-stat-key">Critical Phishing Blocks</span></div>
+            <div className="home-stat"><span className="home-stat-val" style={{ color: '#f59e0b' }}>{data?.moderate || 0}</span><span className="home-stat-key">Moderate Ambiguity Alerts</span></div>
+            <div className="home-stat"><span className="home-stat-val" style={{ color: '#10b981' }}>{data?.low || 0}</span><span className="home-stat-key">Verified Safe Domains</span></div>
+          </div>
+
+          {doughnutData && (
+            <div className="analysis-columns-grid" style={{ marginBottom: '2.5rem' }}>
+              <div className="glass-panel" style={{ textAlign: 'center' }}>
+                <h3 style={{ color: '#fff', marginBottom: '1rem' }}>Threat Severity Spectrum</h3>
+                <div style={{ maxWidth: '280px', margin: '0 auto' }}>
+                  <Doughnut data={doughnutData} options={{ plugins: { legend: { labels: { color: '#94a3b8' } } } }} />
+                </div>
+              </div>
+              <div className="glass-panel">
+                <h3 style={{ color: '#fff', marginBottom: '1rem' }}>Attack Vector Breakdown</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1.5rem' }}>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                      <span>Website URLs</span>
+                      <span style={{ color: 'var(--color-primary)' }}>{data?.breakdown?.url || 0}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                      <span>Phishing Emails</span>
+                      <span style={{ color: 'var(--color-primary)' }}>{data?.breakdown?.email || 0}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                      <span>SMS Smishing Lures</span>
+                      <span style={{ color: 'var(--color-primary)' }}>{data?.breakdown?.sms || 0}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="history-table-wrapper">
+            <div style={{ padding: '1rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
+              <strong style={{ color: '#fff' }}>Historical Forensic Audit Ledger</strong>
+              <input
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: '#fff', padding: '0.35rem 0.75rem', borderRadius: 6, fontSize: '0.82rem' }}
+                placeholder="Search audit ledger..."
+                value={filterQuery}
+                onChange={(e) => setFilterQuery(e.target.value)}
+              />
+            </div>
+            <table className="history-table">
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Target Value</th>
+                  <th>Verdict</th>
+                  <th>Risk Tier</th>
+                  <th>Score</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredScans.map((s) => (
+                  <tr key={s.id} onClick={() => onSelectScan(s)} style={{ cursor: 'pointer' }}>
+                    <td><span className="preset-pill">{s.kind.toUpperCase()}</span></td>
+                    <td style={{ maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.value}</td>
+                    <td>{s.verdict}</td>
+                    <td><span className={`threat-level-tag tag-${s.risk_level.toLowerCase()}`}>{s.risk_level}</span></td>
+                    <td style={{ fontWeight: 700, color: s.score >= 65 ? '#ef4444' : s.score >= 35 ? '#f59e0b' : '#10b981' }}>{s.score}%</td>
+                    <td style={{ color: 'var(--color-on-surface-dim)', fontSize: '0.78rem' }}>{new Date(s.created).toLocaleTimeString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Dedicated Full Login & Access Clearance Page ---
+function LoginPage({ onLoginSuccess }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const handleGuest = () => {
+    onLoginSuccess({ email: 'guest@threatlens.intel', displayName: 'Guest Analyst', isGuest: true });
   };
 
-  // 2. Bar: Attack Vectors Analyzed
-  const barData = {
-    labels: ['Website URLs', 'Email Payloads', 'SMS Messages'],
-    datasets: [
-      {
-        label: 'Scans by Attack Vector',
-        data: [data?.breakdown?.url || 0, data?.breakdown?.email || 0, data?.breakdown?.sms || 0],
-        backgroundColor: [
-          'rgba(0, 242, 254, 0.75)',
-          'rgba(56, 189, 248, 0.75)',
-          'rgba(139, 92, 246, 0.75)'
-        ],
-        hoverBackgroundColor: [
-          '#00f2fe',
-          '#38bdf8',
-          '#8b5cf6'
-        ],
-        borderColor: ['#00f2fe', '#38bdf8', '#8b5cf6'],
-        borderWidth: 1,
-        borderRadius: 8
-      }
-    ]
-  };
-
-  // 3. Radar: Cyber Threat Vector Spectrum (Design-related attractive graph)
-  const radarData = {
-    labels: [
-      'Brand Spoofing',
-      'Bare IP Host',
-      'URL Shortener',
-      'Urgency Coercion',
-      'Credential Lure',
-      'Lexical Anomaly'
-    ],
-    datasets: [
-      {
-        label: 'Vector Intensity',
-        data: [
-          data?.critical ? Math.min(100, data.critical * 30 + 40) : 15,
-          data?.high ? Math.min(100, data.high * 25 + 30) : 10,
-          data?.moderate ? Math.min(100, data.moderate * 20 + 35) : 20,
-          data?.breakdown?.email ? Math.min(100, data.breakdown.email * 20 + 25) : 15,
-          data?.breakdown?.sms ? Math.min(100, data.breakdown.sms * 25 + 20) : 10,
-          data?.total ? Math.min(100, data.total * 15 + 30) : 25
-        ],
-        backgroundColor: 'rgba(0, 242, 254, 0.16)',
-        borderColor: '#00f2fe',
-        borderWidth: 2,
-        pointBackgroundColor: '#fbbf24',
-        pointBorderColor: '#fff',
-        pointHoverBackgroundColor: '#fff',
-        pointHoverBorderColor: '#00f2fe',
-        pointRadius: 4
-      }
-    ]
+  const handleGoogle = async () => {
+    try {
+      const res = await signInWithPopup(auth, googleProvider);
+      onLoginSuccess(res.user);
+    } catch (e) {
+      setErrorMsg(e.message);
+    }
   };
 
   return (
-    <div className="dashboard-view-container page-enter-anim">
-      <div className="scanner-view-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h2>Threat Intelligence & Audit Telemetry</h2>
-          <p style={{ color: 'var(--text-muted)' }}>
-            Real-time telemetry and forensic records. Scoped to account: <span style={{ color: 'var(--cyan)', fontWeight: 600 }}>{userEmail}</span>
-          </p>
-        </div>
-        <button className="btn-secondary" onClick={fetchDashboard}>
-          ↻ Refresh Telemetry
+    <div className="login-page-view">
+      <div className="login-card-container">
+        <span className="home-eyebrow">Security Clearance Portal</span>
+        <h2 className="section-title" style={{ fontSize: '1.8rem', margin: '0.5rem 0 0.5rem' }}>Analyst Sign In</h2>
+        <p style={{ color: 'var(--color-on-surface-secondary)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+          Personalized Threat Intelligence Telemetry & Audit Logging
+        </p>
+
+        {errorMsg && (
+          <div style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', padding: '0.65rem', borderRadius: 6, marginBottom: '1rem', fontSize: '0.8rem' }}>
+            {errorMsg}
+          </div>
+        )}
+
+        <button className="btn btn-outline" style={{ width: '100%', marginBottom: '1rem' }} onClick={handleGoogle}>
+          Continue with Google
+        </button>
+
+        <div style={{ textAlign: 'center', margin: '1rem 0', color: 'var(--color-on-surface-dim)', fontSize: '0.75rem' }}>OR DEMO ACCESS</div>
+
+        <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleGuest}>
+          Enter as Guest Analyst (1-Click Demo)
         </button>
       </div>
-
-      {/* 4 Stats Cards */}
-      <div className="stats-cards-grid">
-        <div className="stat-card-item card-stagger-1">
-          <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase', fontWeight: 600 }}>
-            Total Scans Logged
-          </span>
-          <div className="stat-card-num">{data?.total || 0}</div>
-        </div>
-
-        <div className="stat-card-item card-stagger-2">
-          <span style={{ fontSize: '0.78rem', color: '#ff6b6b', textTransform: 'uppercase', fontWeight: 600 }}>
-            Critical & High Threats
-          </span>
-          <div className="stat-card-num" style={{ color: '#ef4444' }}>
-            {(data?.critical || 0) + (data?.high || 0)}
-          </div>
-        </div>
-
-        <div className="stat-card-item card-stagger-3">
-          <span style={{ fontSize: '0.78rem', color: '#fcd34d', textTransform: 'uppercase', fontWeight: 600 }}>
-            Moderate / Caution
-          </span>
-          <div className="stat-card-num" style={{ color: '#f59e0b' }}>
-            {data?.moderate || 0}
-          </div>
-        </div>
-
-        <div className="stat-card-item card-stagger-3">
-          <span style={{ fontSize: '0.78rem', color: '#6ee7b7', textTransform: 'uppercase', fontWeight: 600 }}>
-            Verified Clean
-          </span>
-          <div className="stat-card-num" style={{ color: '#10b981' }}>
-            {data?.low || 0}
-          </div>
-        </div>
-      </div>
-
-      {/* 3 Attractive Design-Related Cyber Charts */}
-      <div className="dashboard-charts-row">
-        {/* Chart 1: Doughnut */}
-        <div className="chart-panel-card card-stagger-1">
-          <h4 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.05rem', marginBottom: '0.85rem', color: '#fff' }}>
-            Threat Severity Spectrum
-          </h4>
-          <div className="chart-container-inner">
-            <Doughnut
-              data={doughnutData}
-              options={{
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '76%',
-                plugins: {
-                  legend: { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 10, font: { size: 11 } } },
-                  tooltip: {
-                    backgroundColor: 'rgba(7, 14, 28, 0.95)',
-                    borderColor: 'rgba(56, 189, 248, 0.3)',
-                    borderWidth: 1,
-                    titleColor: '#fff',
-                    bodyColor: '#cbd5e1'
-                  }
-                }
-              }}
-            />
-            <div className="chart-doughnut-center-info">
-              <strong>{data?.total || 0}</strong>
-              <small>Scans</small>
-            </div>
-          </div>
-        </div>
-
-        {/* Chart 2: Bar */}
-        <div className="chart-panel-card card-stagger-2">
-          <h4 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.05rem', marginBottom: '0.85rem', color: '#fff' }}>
-            Attack Vector Ingestion
-          </h4>
-          <div className="chart-container-inner">
-            <Bar
-              data={barData}
-              options={{
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                  legend: { display: false },
-                  tooltip: {
-                    backgroundColor: 'rgba(7, 14, 28, 0.95)',
-                    borderColor: 'rgba(56, 189, 248, 0.3)',
-                    borderWidth: 1
-                  }
-                },
-                scales: {
-                  x: { ticks: { color: '#94a3b8', font: { size: 11 } }, grid: { display: false } },
-                  y: { ticks: { color: '#94a3b8', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
-                }
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Chart 3: Cyber Threat Radar Spectrum */}
-        <div className="chart-panel-card card-stagger-3">
-          <h4 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.05rem', marginBottom: '0.85rem', color: '#fff' }}>
-            Heuristic Threat Profile
-          </h4>
-          <div className="chart-container-inner">
-            <Radar
-              data={radarData}
-              options={{
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                  legend: { display: false },
-                  tooltip: {
-                    backgroundColor: 'rgba(7, 14, 28, 0.95)',
-                    borderColor: 'rgba(56, 189, 248, 0.3)',
-                    borderWidth: 1
-                  }
-                },
-                scales: {
-                  r: {
-                    angleLines: { color: 'rgba(56, 189, 248, 0.15)' },
-                    grid: { color: 'rgba(56, 189, 248, 0.1)' },
-                    pointLabels: { color: '#94a3b8', font: { size: 9.5 } },
-                    ticks: { display: false, maxTicksLimit: 4 }
-                  }
-                }
-              }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Historical Scans Table */}
-      <div className="table-panel-card">
-        <div className="table-top-actions">
-          <h4 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.15rem', color: '#fff' }}>
-            Account Incident Audits ({filteredScans.length})
-          </h4>
-          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <input
-              className="search-filter-input"
-              placeholder="Filter by keyword or domain..."
-              value={filterQuery}
-              onChange={(e) => setFilterQuery(e.target.value)}
-            />
-            <select
-              className="search-filter-input"
-              style={{ minWidth: '130px' }}
-              value={levelFilter}
-              onChange={(e) => setLevelFilter(e.target.value)}
-            >
-              <option value="ALL">All Tiers</option>
-              <option value="CRITICAL">Critical</option>
-              <option value="HIGH">High</option>
-              <option value="MODERATE">Moderate</option>
-              <option value="LOW">Low</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="scans-table-wrap">
-          <table className="scans-data-table">
-            <thead>
-              <tr>
-                <th>Timestamp</th>
-                <th>Vector</th>
-                <th>Inspected Payload</th>
-                <th>Category</th>
-                <th>Risk Score</th>
-                <th>Tier</th>
-                <th style={{ textAlign: 'right' }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredScans.length === 0 ? (
-                <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-dim)' }}>
-                    No incident records found for this account. Run an analysis in URL Scanner or Email & SMS to record telemetry!
-                  </td>
-                </tr>
-              ) : (
-                filteredScans.map((scan) => (
-                  <tr
-                    key={scan.id}
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => onSelectScan(scan)}
-                  >
-                    <td style={{ color: 'var(--text-dim)', fontSize: '0.78rem' }}>
-                      {new Date(scan.created).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </td>
-                    <td>
-                      <span className="category-tag" style={{ fontSize: '0.7rem' }}>
-                        {scan.kind?.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="table-val-cell">{scan.value}</td>
-                    <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{scan.threat_category}</td>
-                    <td style={{ fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{scan.score}%</td>
-                    <td>
-                      <span className={`threat-level-tag tag-${scan.risk_level?.toLowerCase()}`} style={{ fontSize: '0.68rem', padding: '0.2rem 0.55rem' }}>
-                        {scan.risk_level}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button
-                        style={{ background: 'none', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: '0.8rem' }}
-                        onClick={(e) => handleDeleteScan(scan.id, e)}
-                        title="Delete log entry"
-                      >
-                        ✕
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 }
 
-// --- SOC Knowledge Hub ---
-function KnowledgeHubView() {
-  return (
-    <div className="scanner-view-container page-enter-anim">
-      <div className="scanner-view-header">
-        <h2>SOC Cyber Defense Knowledge Base</h2>
-        <p style={{ color: 'var(--text-muted)' }}>
-          Tactical reference for identifying typosquatting, subdomain masking, and social engineering coercion.
-        </p>
-      </div>
-
-      <div className="analysis-columns-grid">
-        <div className="glass-panel card-stagger-1" style={{ padding: '1.75rem' }}>
-          <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.25rem', marginBottom: '1rem', color: '#fff' }}>
-            Anatomy of a Phishing URL
-          </h3>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '1.25rem' }}>
-            Attackers manipulate distinct components of a URL to spoof authoritative services:
-          </p>
-          <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.85rem', fontSize: '0.85rem' }}>
-            <li style={{ background: 'var(--bg-input)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)' }}>
-              <strong style={{ color: 'var(--cyan)' }}>Subdomain Masquerading:</strong> Stacking legitimate brand names in subdomains (e.g. <code>paypal.com.verify-billing.xyz</code>). The true host is the root domain before the TLD.
-            </li>
-            <li style={{ background: 'var(--bg-input)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)' }}>
-              <strong style={{ color: 'var(--cyan)' }}>Typosquatting & Leetspeak:</strong> Substituting characters (e.g. <code>paypa1.com</code>, <code>micros0ft.com</code>) to fool hurried readers.
-            </li>
-            <li style={{ background: 'var(--bg-input)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)' }}>
-              <strong style={{ color: 'var(--cyan)' }}>Punycode Homograph Exploits:</strong> Using non-Latin lookalike Unicode characters represented as <code>xn--...</code> in DNS.
-            </li>
-            <li style={{ background: 'var(--bg-input)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)' }}>
-              <strong style={{ color: 'var(--cyan)' }}>Bare IP Hosting:</strong> Deploying credential harvesting forms directly on bare IPv4 addresses to bypass domain reputation blocklists.
-            </li>
-          </ul>
-        </div>
-
-        <div className="glass-panel card-stagger-2" style={{ padding: '1.75rem' }}>
-          <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.25rem', marginBottom: '1rem', color: '#fff' }}>
-            Social Engineering Red Flags
-          </h3>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '1.25rem' }}>
-            Phishing emails and SMS smishing rely on psychological coercion:
-          </p>
-          <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.85rem', fontSize: '0.85rem' }}>
-            <li style={{ background: 'var(--bg-input)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)' }}>
-              <strong style={{ color: '#f87171' }}>Artificial Urgency:</strong> Demanding action "within 24 hours" under penalty of account termination or legal prosecution.
-            </li>
-            <li style={{ background: 'var(--bg-input)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)' }}>
-              <strong style={{ color: '#f87171' }}>Secret Solicitation:</strong> Prompting for SMS OTP codes, PINs, or passwords through unprompted messages.
-            </li>
-            <li style={{ background: 'var(--bg-input)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)' }}>
-              <strong style={{ color: '#f87171' }}>Delivery Smishing:</strong> Fake notifications from USPS/DHL claiming an undelivered parcel requiring a small fee.
-            </li>
-            <li style={{ background: 'var(--bg-input)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)' }}>
-              <strong style={{ color: '#f87171' }}>Advance-Fee Bait:</strong> Fraudulent notices of lottery wins, tax rebates, or cryptocurrency windfalls.
-            </li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// --- Main App Root ---
+// --- Main App Root with Duskline Navigation & Footer ---
 function App() {
   const [tab, setTab] = useState('home');
   const [user, setUser] = useState(null);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [activeUrlScan, setActiveUrlScan] = useState('');
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-      }
+      if (currentUser) setUser(currentUser);
     });
     return () => unsub();
   }, []);
 
-  function handleSignOut() {
-    signOut(auth).catch((e) => console.warn(e));
-    setUser(null);
-    setUserMenuOpen(false);
-    setTab('home');
-  }
-
-  function handleSelectScanFromHistory(scan) {
-    if (scan.kind === 'url') {
-      setActiveUrlScan(scan.value);
-      setTab('url');
-    } else {
-      setTab('messages');
-    }
-  }
-
   const currentEmail = user?.email || 'guest@threatlens.intel';
 
   return (
-    <div className="app-container">
-      {/* Subtle Star Glitter Mouse Cursor */}
+    <div>
       <StarSprinkleCursor />
 
-      {/* Navbar with Previous Name: ThreatLens / DEFENSIVE INTELLIGENCE and DUAL-ENGINE removed */}
-      <header className="cyber-nav">
-        <div className="brand-wrapper" onClick={() => setTab('home')}>
-          <ShieldIcon className="shield-logo-icon" />
-          <div className="brand-text">
-            <h1>ThreatLens</h1>
-            <div className="brand-sub">DEFENSIVE INTELLIGENCE</div>
-          </div>
-        </div>
-
-        <nav className="nav-links">
-          <button
-            className={`nav-item-btn ${tab === 'home' ? 'active' : ''}`}
-            onClick={() => setTab('home')}
-          >
-            Overview
-          </button>
-          <button
-            className={`nav-item-btn ${tab === 'url' ? 'active' : ''}`}
-            onClick={() => setTab('url')}
-          >
-            URL Scanner
-          </button>
-          <button
-            className={`nav-item-btn ${tab === 'messages' ? 'active' : ''}`}
-            onClick={() => setTab('messages')}
-          >
-            Email & SMS
-          </button>
-          <button
-            className={`nav-item-btn ${tab === 'dashboard' ? 'active' : ''}`}
-            onClick={() => setTab('dashboard')}
-          >
-            Threat Feed
-          </button>
-          <button
-            className={`nav-item-btn ${tab === 'knowledge' ? 'active' : ''}`}
-            onClick={() => setTab('knowledge')}
-          >
-            Defense Guide
-          </button>
-        </nav>
-
-        <div className="nav-actions">
-          {user ? (
-            <div className="user-menu-wrap">
-              <button
-                className="user-pill-btn"
-                onClick={() => setUserMenuOpen(!userMenuOpen)}
-              >
-                <div className="user-avatar-circle">
-                  {user.photoURL ? (
-                    <img src={user.photoURL} alt="Avatar" style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
-                  ) : (
-                    (user.displayName?.[0] || user.email?.[0] || 'A').toUpperCase()
-                  )}
-                </div>
-                <span style={{ fontSize: '0.82rem', maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {user.displayName || user.email?.split('@')[0]}
-                </span>
-                <span style={{ fontSize: '0.7rem' }}>▼</span>
-              </button>
-
-              {userMenuOpen && (
-                <div className="user-dropdown-popover">
-                  <div className="user-info-meta">
-                    <strong>{user.displayName || 'Security Analyst'}</strong>
-                    <span>{user.email}</span>
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginBottom: '0.65rem' }}>
-                    {user.isGuest ? 'Session: Guest Demo Mode' : user.providerData?.[0]?.providerId === 'google.com' ? 'Authenticated: Google OAuth 2.0' : 'Authenticated: Firebase Identity'}
-                  </div>
-                  <button
-                    className="btn-secondary"
-                    style={{ width: '100%', justifyContent: 'center', fontSize: '0.8rem', padding: '0.45rem' }}
-                    onClick={handleSignOut}
-                  >
-                    Sign Out
-                  </button>
-                </div>
-              )}
+      {/* Duskline Navigation (.dl-nav) */}
+      <header className="dl-nav">
+        <div className="dl-nav-bar">
+          <div className="dl-nav-brand" onClick={() => setTab('home')}>
+            <div className="dl-logo-mark">
+              <ShieldIcon style={{ width: 18, height: 18 }} />
             </div>
-          ) : (
-            <button
-              className={`btn-primary ${tab === 'login' ? 'active' : ''}`}
-              onClick={() => setTab('login')}
-            >
-              <GoogleIcon />
-              <span>Sign In / Join</span>
+            <div>
+              <div className="dl-brand-title">ThreatLens</div>
+              <div className="dl-brand-badge">Defensive Intelligence</div>
+            </div>
+          </div>
+
+          <div className="dl-nav-right">
+            {/* Duskline Menu Dropdown */}
+            <div className="dl-nav-drop">
+              <div className="dl-nav-trigger">
+                <span>Threat Intelligence</span>
+                <span className="dl-nav-chev">▾</span>
+              </div>
+              <ul className="dl-nav-panel">
+                <li className="dl-nav-panel-item-note">
+                  <h4 className="dl-nav-panel-heading">Live Perimeter</h4>
+                  <p className="dl-nav-panel-metric">1,284</p>
+                  <p className="dl-nav-panel-text">new exposures confirmed across estates this week, analyst-verified.</p>
+                </li>
+                <li>
+                  <div className="dl-nav-panel-link" onClick={() => setTab('platform')}>
+                    <span>Platform</span>
+                    <span className="dl-nav-panel-text">Four scans, one boundary, no agents.</span>
+                  </div>
+                  <div className="dl-nav-panel-link" onClick={() => setTab('pricing')}>
+                    <span>Pricing</span>
+                    <span className="dl-nav-panel-text">Per asset, per month, counted before you sign.</span>
+                  </div>
+                  <div className="dl-nav-panel-link" onClick={() => setTab('dashboard')}>
+                    <span>Threat Feed</span>
+                    <span className="dl-nav-panel-text">Real-time SQLite telemetry & Radar metrics.</span>
+                  </div>
+                </li>
+              </ul>
+            </div>
+
+            <button className={`btn btn-outline ${tab === 'home' ? 'btn-primary' : ''}`} onClick={() => setTab('home')}>
+              Overview
             </button>
-          )}
+            <button className={`btn btn-outline ${tab === 'url' ? 'btn-primary' : ''}`} onClick={() => setTab('url')}>
+              URL Scanner
+            </button>
+            <button className={`btn btn-outline ${tab === 'messages' ? 'btn-primary' : ''}`} onClick={() => setTab('messages')}>
+              Email & SMS
+            </button>
+            <button className={`btn btn-outline ${tab === 'platform' ? 'btn-primary' : ''}`} onClick={() => setTab('platform')}>
+              Platform
+            </button>
+            <button className={`btn btn-outline ${tab === 'pricing' ? 'btn-primary' : ''}`} onClick={() => setTab('pricing')}>
+              Pricing
+            </button>
+            <button className={`btn btn-outline ${tab === 'dashboard' ? 'btn-primary' : ''}`} onClick={() => setTab('dashboard')}>
+              Threat Feed
+            </button>
+
+            <div className="dl-nav-account">
+              <div className="dl-nav-account-dot" />
+              <span>Operational</span>
+            </div>
+
+            {user ? (
+              <button className="btn btn-outline" style={{ fontSize: '0.82rem' }} onClick={() => setUser(null)}>
+                {user.displayName || user.email?.split('@')[0]} (Sign Out)
+              </button>
+            ) : (
+              <button className="btn btn-primary" onClick={() => setTab('login')}>
+                Free Perimeter Sweep
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
-      {/* Main Body */}
-      <main className="main-view-body">
+      {/* Main Surface */}
+      <main>
         {tab === 'home' && (
           <HomePage
             onScanSample={(url) => {
@@ -1720,76 +1629,109 @@ function App() {
         {tab === 'url' && (
           <UrlScannerView
             initialUrl={activeUrlScan}
-            onScanComplete={() => {}}
             userEmail={currentEmail}
           />
         )}
 
         {tab === 'messages' && (
           <MessagesScannerView
-            onScanComplete={() => {}}
             userEmail={currentEmail}
+          />
+        )}
+
+        {tab === 'platform' && (
+          <PlatformView
+            onNavigateTab={setTab}
+          />
+        )}
+
+        {tab === 'pricing' && (
+          <PricingView
+            onNavigateTab={setTab}
           />
         )}
 
         {tab === 'dashboard' && (
           <DashboardView
-            onSelectScan={handleSelectScanFromHistory}
+            onSelectScan={(s) => {
+              if (s.kind === 'url') {
+                setActiveUrlScan(s.value);
+                setTab('url');
+              } else {
+                setTab('messages');
+              }
+            }}
             userEmail={currentEmail}
           />
         )}
 
-        {tab === 'knowledge' && (
-          <KnowledgeHubView />
-        )}
-
         {tab === 'login' && (
           <LoginPage
-            onLoginSuccess={(loggedUser) => {
-              setUser(loggedUser);
+            onLoginSuccess={(u) => {
+              setUser(u);
               setTab('dashboard');
             }}
           />
         )}
       </main>
 
-      {/* Cyber Footer */}
-      <footer className="cyber-footer">
-        <div className="footer-inner">
-          <div className="footer-top-row">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <ShieldIcon className="shield-logo-icon" style={{ width: 30, height: 30 }} />
-              <div>
-                <strong style={{ color: '#fff', fontSize: '1.05rem' }}>
-                  AI-Powered Cybersecurity Threat Intelligence System
-                </strong>
-                <p style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>
-                  Enterprise-Grade Dual-Engine Phishing & Social Engineering Detection Platform
-                </p>
+      {/* Duskline Footer (.dl-foot) */}
+      <footer className="dl-foot">
+        <div className="dl-foot-inner">
+          <div className="dl-foot-cols">
+            <div className="dl-foot-col">
+              <span className="dl-foot-head">Platform</span>
+              <a className="dl-foot-link" onClick={() => setTab('platform')}>Asset Discovery</a>
+              <a className="dl-foot-link" onClick={() => setTab('platform')}>Exposure Scoring</a>
+              <a className="dl-foot-link" onClick={() => setTab('platform')}>Daily Perimeter Diff</a>
+              <a className="dl-foot-link" onClick={() => setTab('url')}>Certificate and DNS Watch</a>
+              <a className="dl-foot-link" onClick={() => setTab('messages')}>Credential Leak Monitoring</a>
+              <a className="dl-foot-link" onClick={() => setTab('pricing')}>Plans and Limits</a>
+            </div>
+
+            <div className="dl-foot-col">
+              <span className="dl-foot-head">Documentation</span>
+              <a className="dl-foot-link" onClick={() => setTab('platform')}>API Reference ↗</a>
+              <a className="dl-foot-link" onClick={() => setTab('home')}>Service Status ↗</a>
+              <p className="dl-foot-text">Scanner IP ranges published and versioned, so your allow-lists stay stable.</p>
+              <div style={{ marginTop: '1rem' }}>
+                <span className="dl-foot-head">Legal</span>
+                <p className="dl-foot-text">Terms · Privacy · Responsible Disclosure</p>
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '1rem', fontSize: '0.85rem' }}>
-              <button style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer' }} onClick={() => setTab('home')}>Overview</button>
-              <button style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer' }} onClick={() => setTab('url')}>URL Scanner</button>
-              <button style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer' }} onClick={() => setTab('messages')}>Social Engineering</button>
-              <button style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer' }} onClick={() => setTab('dashboard')}>Threat Feed</button>
-              <button style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer' }} onClick={() => setTab('knowledge')}>Knowledge Base</button>
-              {!user && (
-                <button style={{ background: 'none', border: 'none', color: 'var(--cyan)', fontWeight: 600, cursor: 'pointer' }} onClick={() => setTab('login')}>Sign In</button>
-              )}
+            <div className="dl-foot-col">
+              <span className="dl-foot-head">Talk to Us</span>
+              <a className="dl-foot-link" style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem' }} href="tel:+3726024180">+372 602 4180</a>
+              <p className="dl-foot-text">Analysts on call 24/7 for confirmed critical exposures.</p>
+              <a className="dl-foot-link" style={{ color: 'var(--color-primary)' }} onClick={() => setTab('url')}>Book a Sweep →</a>
+              <div className="dl-foot-social">
+                <div className="dl-foot-circle">in</div>
+                <div className="dl-foot-circle">gh</div>
+                <div className="dl-foot-circle">x</div>
+              </div>
+            </div>
+
+            <div className="dl-foot-col">
+              <span className="dl-foot-head">Company</span>
+              <p className="dl-foot-text">ThreatLens OÜ</p>
+              <p className="dl-foot-text">Telliskivi 60a, Tallinn 10412</p>
+              <p className="dl-foot-text">Registered in Estonia 16410922</p>
+              <div className="dl-foot-badge">
+                <span className="dl-foot-badge-mark">SOC 2</span>
+                <span className="dl-foot-badge-text">Type II · audited annually since 2023</span>
+              </div>
             </div>
           </div>
 
-          <div className="footer-bottom-row">
-            <div>© 2026 AI-Powered Cybersecurity Threat Intelligence System · Dual ML Engine + Heuristic Core v3.5.0</div>
-            <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-              <span style={{ color: 'var(--safe-green)', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span className="status-dot-pulse" style={{ width: 6, height: 6 }} />
-                All Defense Systems Operational
-              </span>
-              <span>Personalized SQLite Telemetry & Firebase Auth</span>
+          <div className="dl-foot-base">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div className="dl-logo-mark"><ShieldIcon style={{ width: 16, height: 16 }} /></div>
+              <strong style={{ color: '#fff' }}>ThreatLens</strong>
             </div>
+            <p className="dl-foot-copy">
+              © 2026 ThreatLens OÜ · We scan what you own, and only what you own.
+            </p>
           </div>
         </div>
       </footer>

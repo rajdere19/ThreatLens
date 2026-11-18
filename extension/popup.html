@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThreatLens Shield</title>
+  <style>
+    :root {
+      --bg: #090c12;
+      --card-bg: #121722;
+      --card-border: #1e2638;
+      --cyan: #00f2fe;
+      --green: #10b981;
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --text: #f3f4f6;
+      --muted: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      width: 360px;
+      min-height: 480px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      padding: 1rem;
+      user-select: none;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--card-border);
+      margin-bottom: 1rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-icon {
+      width: 24px;
+      height: 24px;
+      color: var(--cyan);
+    }
+
+    .brand-title {
+      font-size: 0.95rem;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+      background: linear-gradient(135deg, #fff 40%, var(--cyan) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.15);
+      color: #6ee7b7;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .status-chip.offline {
+      background: rgba(239, 68, 68, 0.15);
+      color: #fca5a5;
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .target-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .target-label {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+      margin-bottom: 2px;
+    }
+
+    .target-host {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #fff;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .gauge-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 1.25rem 1rem;
+      text-align: center;
+      margin-bottom: 1rem;
+      position: relative;
+    }
+
+    .gauge-wrapper {
+      position: relative;
+      width: 100px;
+      height: 100px;
+      margin: 0 auto 0.75rem auto;
+    }
+
+    .gauge-svg {
+      transform: rotate(-90deg);
+    }
+
+    .gauge-bg {
+      stroke: rgba(255, 255, 255, 0.06);
+    }
+
+    .gauge-fill {
+      transition: stroke-dashoffset 0.6s ease, stroke 0.3s ease;
+    }
+
+    .gauge-center-text {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .gauge-score {
+      font-size: 1.5rem;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .gauge-score-label {
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+      margin-top: 2px;
+    }
+
+    .risk-tier-pill {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 3px 12px;
+      border-radius: 9999px;
+      margin-bottom: 0.35rem;
+    }
+
+    .category-text {
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .signals-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+      margin-bottom: 1rem;
+      max-height: 140px;
+      overflow-y: auto;
+    }
+
+    .signals-title {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .signal-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 4px 0;
+      font-size: 0.75rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .signal-row:last-child {
+      border-bottom: none;
+    }
+
+    .signal-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      margin-top: 5px;
+      flex-shrink: 0;
+    }
+
+    .actions-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 0.65rem 0.75rem;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      text-align: center;
+    }
+
+    .btn-primary {
+      background: rgba(0, 242, 254, 0.12);
+      border: 1px solid rgba(0, 242, 254, 0.4);
+      color: var(--cyan);
+    }
+
+    .btn-primary:hover {
+      background: rgba(0, 242, 254, 0.22);
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--card-border);
+      color: var(--muted);
+    }
+
+    .btn-outline:hover {
+      border-color: #38455e;
+      color: #fff;
+    }
+
+    .offline-banner {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 8px;
+      padding: 0.75rem;
+      font-size: 0.75rem;
+      color: #fca5a5;
+      line-height: 1.4;
+      margin-bottom: 1rem;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="brand">
+      <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        <path d="m9 12 2 2 4-4" stroke="currentColor" stroke-width="2.5" />
+      </svg>
+      <span class="brand-title">ThreatLens Shield</span>
+    </div>
+    <div id="statusChip" class="status-chip">
+      <span class="status-dot"></span>
+      <span id="statusText">Active</span>
+    </div>
+  </div>
+
+  <div id="offlineBanner" class="offline-banner">
+    <strong>ThreatLens Backend Offline</strong><br>
+    Start <code>python app.py</code> on port 8000 to enable real-time deep neural and heuristic threat scoring.
+  </div>
+
+  <div class="target-card">
+    <div class="target-label">ACTIVE DESTINATION</div>
+    <div class="target-host" id="targetHost">Inspecting active tab...</div>
+  </div>
+
+  <div class="gauge-card">
+    <div class="gauge-wrapper">
+      <svg class="gauge-svg" width="100" height="100" viewBox="0 0 100 100">
+        <circle class="gauge-bg" cx="50" cy="50" r="42" fill="none" stroke-width="8" />
+        <circle id="gaugeFill" class="gauge-fill" cx="50" cy="50" r="42" fill="none" stroke-width="8"
+          stroke="#10b981" stroke-dasharray="263.89" stroke-dashoffset="263.89" stroke-linecap="round" />
+      </svg>
+      <div class="gauge-center-text">
+        <span class="gauge-score" id="scoreDisplay">--</span>
+        <span class="gauge-score-label">RISK</span>
+      </div>
+    </div>
+    <div id="riskTierPill" class="risk-tier-pill" style="background: rgba(16, 185, 129, 0.2); color: #6ee7b7;">ANALYZING</div>
+    <div class="category-text" id="categoryDisplay">Running inspection heuristics...</div>
+  </div>
+
+  <div class="signals-card">
+    <div class="signals-title">Security Signals & Intelligence</div>
+    <div id="signalsList">
+      <div class="signal-row" style="color: var(--muted);">No signals detected.</div>
+    </div>
+  </div>
+
+  <div class="actions-grid">
+    <button id="btnRescan" class="btn btn-primary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+      </svg>
+      Re-Scan Tab
+    </button>
+    <button id="btnOpenDashboard" class="btn btn-outline">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="2" y1="12" x2="22" y2="12"></line>
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+      </svg>
+      Open Portal
+    </button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

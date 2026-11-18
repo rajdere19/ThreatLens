@@ -3,6 +3,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+from FUNDS_TRANSFER_ANALYZER import analyze_funds_transfer
+from EMAIL_HEADER_PARSER import analyze_email_headers
+from BRAND_SECURITY_VERIFIER import verify_brand_security_email
 
 ROOT = Path(__file__).parent
 app = Flask(__name__, static_folder=str(ROOT / 'frontend' / 'dist'), static_url_path='')
@@ -22,10 +25,16 @@ except Exception as e:
     model_lr = None
     print(f"Warning loading logistic regression model: {e}")
 
-try:
-    model_mnb = pickle.load(open(ROOT / 'phishing_mnb.pkl', 'rb'))
-except Exception as e:
-    model_mnb = None
+# Lazy-loaded auxiliary model to ensure rapid startup
+model_mnb = None
+def get_model_mnb():
+    global model_mnb
+    if model_mnb is None:
+        try:
+            model_mnb = pickle.load(open(ROOT / 'phishing_mnb.pkl', 'rb'))
+        except Exception as e:
+            model_mnb = None
+    return model_mnb
 
 # Verified Brand Knowledge Base (Official Apex Domains)
 BRAND_DIRECTORY = {
@@ -54,6 +63,383 @@ BRAND_DIRECTORY = {
     'adobe': ['adobe.com']
 }
 
+# Official Government Portals & Clone Tracking Directory
+# Focus: Maharashtra State & Central Indian Citizen Services
+# Differentiates authentic .gov.in / official portals from fraudulent clones on .site, .xyz, .sh, .hn, .top
+GOV_DIRECTORY = {
+    'maharashtra': {
+        'name': 'Maharashtra State Portal',
+        'dept': 'Government of Maharashtra',
+        'official_domains': ['maharashtra.gov.in'],
+        'clone_domains': [
+            'maharashtra.site', 'maharashtra.xyz', 'maharashtragov.sh',
+            'maharashtra.hn', 'maharashtra-gov.site', 'maharashtragov.in.net',
+            'maharashtra-portal.xyz', 'maharashtragov.site', 'maharashtra.top'
+        ],
+        'keywords': ['maharashtra.gov', 'maharashtragov', 'maharashtra-gov'],
+        'threat_type': 'State Portal Masquerading & Citizen Identity Theft'
+    },
+    'aaplesarkar': {
+        'name': 'Aaple Sarkar Citizen Services',
+        'dept': 'MahaOnline / Government of Maharashtra',
+        'official_domains': ['aaplesarkar.mahaonline.gov.in', 'mahaonline.gov.in'],
+        'clone_domains': [
+            'aaplesarkar.site', 'aaplesarkar.xyz', 'aaplesarkar-mahaonline.sh',
+            'aaplesarkar.hn', 'mahaonline-portal.site', 'aaplesarkar-gov.xyz',
+            'aaplesarkar.top', 'mahaonline.site', 'aaplesarkar-services.sh'
+        ],
+        'keywords': ['aaplesarkar', 'aaple-sarkar', 'mahaonline'],
+        'threat_type': 'Citizen Certificate Phishing & Identity Document Theft'
+    },
+    'mahadbt': {
+        'name': 'MahaDBT (Scholarships & Direct Benefit Transfer)',
+        'dept': 'Social Justice & Special Assistance Dept, Maharashtra',
+        'official_domains': ['mahadbt.maharashtra.gov.in', 'mahadbtmahait.gov.in'],
+        'clone_domains': [
+            'mahadbt.site', 'mahadbt.xyz', 'mahadbt-scholarship.sh',
+            'mahadbt.hn', 'mahadbtgov.site', 'mahadbt-maharashtra.xyz',
+            'mahadbt-portal.top', 'mahadbt.online', 'mahadbt-gov.in.net'
+        ],
+        'keywords': ['mahadbt', 'maha-dbt'],
+        'threat_type': 'Student Scholarship Extortion & Bank Account Hijacking'
+    },
+    'bhulekh': {
+        'name': 'Bhulekh Mahabhumi (7/12 Land Records Portal)',
+        'dept': 'Revenue & Forest Department, Maharashtra',
+        'official_domains': ['bhulekh.mahabhumi.gov.in', 'mahabhumi.gov.in'],
+        'clone_domains': [
+            'bhulekh-mahabhumi.site', 'bhulekh.xyz', 'mahabhumi.sh',
+            'bhulekh.hn', 'mahabhumi-7-12.site', 'bhulekhmahabhumi.top',
+            'bhulekh-online.xyz', 'bhulekh.site', 'mahabhumi.site', 'bhulekh712.sh'
+        ],
+        'keywords': ['bhulekh', 'mahabhumi', '7-12', '712online'],
+        'threat_type': 'Fraudulent Land Record Download & Fake Stamp Duty Fees'
+    },
+    'igrmaharashtra': {
+        'name': 'IGR Maharashtra (Property Registration & Stamps)',
+        'dept': 'Inspector General of Registration, Maharashtra',
+        'official_domains': ['igrmaharashtra.gov.in'],
+        'clone_domains': [
+            'igrmaharashtra.site', 'igrmaharashtra.xyz', 'igrmaharashtra.sh',
+            'igrmaharashtra.hn', 'igr-maharashtra.top', 'igrmaharashtra-gov.site',
+            'igrmaharashtra-online.xyz', 'igrmaharashtra.top'
+        ],
+        'keywords': ['igrmaharashtra', 'igr-maharashtra'],
+        'threat_type': 'Fake Property Document Verification & Fee Redirection'
+    },
+    'mpsc': {
+        'name': 'Maharashtra Public Service Commission (MPSC)',
+        'dept': 'Maharashtra Public Service Commission',
+        'official_domains': ['mpsc.gov.in', 'mpsconline.gov.in'],
+        'clone_domains': [
+            'mpsc.site', 'mpsc.xyz', 'mpsc-gov.sh',
+            'mpsc.hn', 'mpsc-hallticket.site', 'mpsconline.top',
+            'mpsc-apply.xyz', 'mpsconline.site', 'mpsc-gov.in.net'
+        ],
+        'keywords': ['mpsc', 'mpsconline'],
+        'threat_type': 'Fake Hall Ticket Distribution & Recruitment Fee Phishing'
+    },
+    'mahacet': {
+        'name': 'State Common Entrance Test Cell (MAHACET)',
+        'dept': 'Government of Maharashtra Higher & Technical Education',
+        'official_domains': ['cetcell.mahacet.org', 'mahacet.org'],
+        'clone_domains': [
+            'mahacet.site', 'mahacet.xyz', 'cetcell-mahacet.sh',
+            'mahacet.hn', 'cetcell.site', 'mahacet-gov.xyz',
+            'mahacet-admitcard.top', 'cetcell-mahacet.site'
+        ],
+        'keywords': ['mahacet', 'cetcell'],
+        'threat_type': 'Admit Card Impersonation & Exam Fee Redirection'
+    },
+    'mahadiscom': {
+        'name': 'MahaDiscom (MSEDCL Electricity Portal)',
+        'dept': 'Maharashtra State Electricity Distribution Co. Ltd.',
+        'official_domains': ['mahadiscom.in'],
+        'clone_domains': [
+            'mahadiscom-billpay.site', 'mahadiscom.xyz', 'mahadiscom-update.sh',
+            'mahadiscom.hn', 'mahadiscom-bill.top', 'msedcl-billpay.site',
+            'mahadiscom.site', 'msedcl.xyz', 'mahadiscom-ebill.sh'
+        ],
+        'keywords': ['mahadiscom', 'msedcl'],
+        'threat_type': 'Electricity Disconnection SMS Phishing & Payment Interception'
+    },
+    'msrtc': {
+        'name': 'MSRTC (Maharashtra State Road Transport)',
+        'dept': 'Maharashtra State Road Transport Corporation',
+        'official_domains': ['msrtc.maharashtra.gov.in', 'msrtc.gov.in'],
+        'clone_domains': [
+            'msrtc-booking.site', 'msrtc.xyz', 'msrtc-bus.sh',
+            'msrtc.hn', 'msrtc-ticket.site', 'msrtcmaharashtra.top',
+            'msrtc-online.xyz'
+        ],
+        'keywords': ['msrtc', 'msrtc-ticket', 'msrtc-booking'],
+        'threat_type': 'Fake Bus Ticket Reservation & Credit Card Theft'
+    },
+    'mahapolice': {
+        'name': 'Maharashtra State Police Portal',
+        'dept': 'Maharashtra Police / Home Department',
+        'official_domains': ['mahapolice.gov.in'],
+        'clone_domains': [
+            'mahapolice.site', 'mahapolice.xyz', 'mahapolice-complaint.sh',
+            'mahapolice.hn', 'mahapolice-portal.top', 'mahapolice-challan.site',
+            'mahapolice-gov.xyz'
+        ],
+        'keywords': ['mahapolice', 'maha-police'],
+        'threat_type': 'Fake Cyber Police Extortion & Phishing Challans'
+    },
+    'parivahan': {
+        'name': 'Sarathi Parivahan (Driving License & Vahan Portal)',
+        'dept': 'Ministry of Road Transport and Highways (MoRTH), Government of India',
+        'official_domains': ['sarathi.parivahan.gov.in', 'parivahan.gov.in', 'echallan.parivahan.gov.in'],
+        'clone_domains': [
+            'sarathi-parivahan.site', 'parivahan.xyz', 'sarathi.sh',
+            'sarathi-parivahan.hn', 'echallan-parivahan.site', 'parivahan-sewa.top',
+            'sarathiparivahan.site', 'parivahangov.in.net', 'parivahan.site',
+            'sarathi.xyz', 'echallan.sh'
+        ],
+        'keywords': ['parivahan', 'sarathi', 'echallan'],
+        'threat_type': 'Fake e-Challan Fine Extortion & Driving License Phishing'
+    }
+}
+
+# Verified Piracy & Shadow-Library Directory
+# Differentiates authentic portals (grey-market/adware risks) from malicious impostor clones (infostealers, malware payloads, university credential phishing)
+PIRACY_DIRECTORY = {
+    'fitgirl': {
+        'name': 'FitGirl Repacks',
+        'type': 'Game Repack Portal',
+        'official_domains': [
+            'fitgirl-repacks.site'
+        ],
+        'clone_domains': [
+            'fitgirl-repacks.to',
+            'fitgirlrepacks.co',
+            'fitgir1-repacks.com',
+            'fitgirl-repacks.xyz',
+            'fitgirl-repack.com',
+            'fitgirlrepacks.net',
+            'fitgirl-repacks.cc',
+            'fitgirl-repack.to',
+            'fitgirl.fun',
+            'fitgirl-repacks.download',
+            'fitgirlrepack.org'
+        ],
+        'official_base_score': 45,
+        'clone_base_score': 98,
+        'clone_threat_notes': 'Malicious clones distribute Lumma Stealer, RedLine Stealer, and trojanized setup.exe installers.'
+    },
+    'scihub': {
+        'name': 'Sci-Hub Academic Repository',
+        'type': 'Academic Shadow Library',
+        'official_domains': [
+            'sci-hub.se',
+            'sci-hub.st',
+            'sci-hub.ru'
+        ],
+        'clone_domains': [
+            'sci-hub.top',
+            'sci-hub.click',
+            'sci-hub.pub',
+            'sci-hub.shop',
+            'sci-hub.cloud',
+            'sci-hub-pdf.xyz',
+            'sci-hub.world',
+            'sci-hub.ren',
+            'sci-hub.tw'
+        ],
+        'official_base_score': 40,
+        'clone_base_score': 96,
+        'clone_threat_notes': 'Fake clones harvest university library SSO logins or trick researchers into downloading malicious PDF viewers.'
+    },
+    'sci-hub': {
+        'name': 'Sci-Hub Academic Repository',
+        'type': 'Academic Shadow Library',
+        'official_domains': [
+            'sci-hub.se',
+            'sci-hub.st',
+            'sci-hub.ru'
+        ],
+        'clone_domains': [
+            'sci-hub.top',
+            'sci-hub.click',
+            'sci-hub.pub',
+            'sci-hub.shop',
+            'sci-hub.cloud',
+            'sci-hub-pdf.xyz',
+            'sci-hub.world',
+            'sci-hub.ren',
+            'sci-hub.tw'
+        ],
+        'official_base_score': 40,
+        'clone_base_score': 96,
+        'clone_threat_notes': 'Fake clones harvest university library SSO logins or trick researchers into downloading malicious PDF viewers.'
+    },
+    'libgen': {
+        'name': 'Library Genesis (LibGen)',
+        'type': 'Academic & Book Repository',
+        'official_domains': [
+            'libgen.is',
+            'libgen.rs',
+            'libgen.st',
+            'libgen.li'
+        ],
+        'clone_domains': [
+            'libgen.top',
+            'libgen-download.xyz',
+            'libgen.me',
+            'libgen.click',
+            'libgen.gs',
+            'libgen.io'
+        ],
+        'official_base_score': 40,
+        'clone_base_score': 95,
+        'clone_threat_notes': 'Fake clones package books with executable malware droppers (.exe, .scr).'
+    },
+    'dodi': {
+        'name': 'DODI Repacks',
+        'type': 'Game Repack Portal',
+        'official_domains': [
+            'dodi-repacks.site'
+        ],
+        'clone_domains': [
+            'dodi-repack.com',
+            'dodi-repacks.xyz',
+            'dodi-repacks.to',
+            'dodi-repack.net',
+            'dodi-repacks.download'
+        ],
+        'official_base_score': 44,
+        'clone_base_score': 98,
+        'clone_threat_notes': 'Fake mirrors wrap installer packages in spyware and adware droppers.'
+    },
+    'steamunlocked': {
+        'name': 'SteamUnlocked',
+        'type': 'Direct Warez Portal',
+        'official_domains': [
+            'steamunlocked.net'
+        ],
+        'clone_domains': [
+            'steamun1ocked.net',
+            'steamunlocked.pro',
+            'steamunlocked.cc',
+            'steam-unlocked.com',
+            'steamunlocked.org',
+            'steamunlocked.to',
+            'steamunlocked.xyz'
+        ],
+        'official_base_score': 48,
+        'clone_base_score': 98,
+        'clone_threat_notes': 'Clones spoof UploadHaven redirect gates to distribute malicious zip archives and cryptominers.'
+    },
+    'thepiratebay': {
+        'name': 'The Pirate Bay',
+        'type': 'Torrent Index',
+        'official_domains': [
+            'thepiratebay.org'
+        ],
+        'clone_domains': [
+            'thepiratebay.zone',
+            'pirateproxy.live',
+            'thepiratebay-proxy.xyz',
+            'tpbproxy.click',
+            'thepiratebay10.org',
+            'thepiratebay.vip',
+            'pirate-bay.net'
+        ],
+        'official_base_score': 46,
+        'clone_base_score': 97,
+        'clone_threat_notes': 'Abuse proxy caching to inject malicious malvertising scripts and trojanized torrent torrent files.'
+    },
+    '1337x': {
+        'name': '1337x Torrents',
+        'type': 'Torrent Directory',
+        'official_domains': [
+            '1337x.to',
+            '1337x.so',
+            '1337x.st'
+        ],
+        'clone_domains': [
+            '1337xx.to',
+            '1337x.unblockit.xyz',
+            '1337x.tw',
+            '1337x.is',
+            '1337x-to.org',
+            '1337x.buzz'
+        ],
+        'official_base_score': 44,
+        'clone_base_score': 96,
+        'clone_threat_notes': 'Impostor mirrors inject disguised VBS and PowerShell payload loaders into torrent downloads.'
+    },
+    'yts': {
+        'name': 'YTS / YIFY Movies',
+        'type': 'Movie Torrent Index',
+        'official_domains': [
+            'yts.mx'
+        ],
+        'clone_domains': [
+            'yts.pm',
+            'yts.ag',
+            'yify-movies.xyz',
+            'yts.vc',
+            'yts-torrent.org',
+            'yts.am',
+            'yts.lt'
+        ],
+        'official_base_score': 42,
+        'clone_base_score': 96,
+        'clone_threat_notes': 'Impostor sites serve fake video codec installers containing adware and search hijackers.'
+    },
+    'nyaa': {
+        'name': 'Nyaa Torrents',
+        'type': 'Media Torrent Index',
+        'official_domains': [
+            'nyaa.si'
+        ],
+        'clone_domains': [
+            'nyaa.iss.ink',
+            'nyaa.net',
+            'nyaa-si.top',
+            'nyaa.land'
+        ],
+        'official_base_score': 40,
+        'clone_base_score': 95,
+        'clone_threat_notes': 'Phishing mirrors designed to harvest community forum accounts and deploy malicious extensions.'
+    },
+    'annas-archive': {
+        'name': "Anna's Archive",
+        'type': 'Academic Shadow Library',
+        'official_domains': [
+            'annas-archive.org',
+            'annas-archive.se',
+            'annas-archive.li'
+        ],
+        'clone_domains': [
+            'annas-archive.xyz',
+            'annas-archive.top',
+            'annas-archive.click'
+        ],
+        'official_base_score': 40,
+        'clone_base_score': 95,
+        'clone_threat_notes': 'Clones solicit fraudulent donations or serve weaponized PDF documents.'
+    },
+    'skidrow': {
+        'name': 'Skidrow Scene Impersonation',
+        'type': 'Third-Party Warez',
+        'official_domains': [], # Scene groups do not maintain public web portals
+        'clone_domains': [
+            'skidrowreloaded.com',
+            'skidrowcodex.net',
+            'skidrow-games.com',
+            'skidrowcrack.com',
+            'skidrowreloaded.to',
+            'skidrowrepack.com'
+        ],
+        'official_base_score': 68,
+        'clone_base_score': 94,
+        'clone_threat_notes': 'Warez scene groups do not have official sites; all public sites using this name are third-party operators carrying high malware risk.'
+    }
+}
+
 # Typosquatting / Leetspeak character substitutions
 TYPOSQUAT_MAP = {
     '0': 'o', '1': 'l', '3': 'e', '4': 'a', '5': 's', '8': 'b', '@': 'a', 'vv': 'w'
@@ -64,7 +450,8 @@ SUSPICIOUS_TLDS = {
     'tk', 'ml', 'ga', 'cf', 'gq', 'top', 'xyz', 'buzz', 'fit', 'work',
     'icu', 'cyou', 'rest', 'ru', 'click', 'link', 'stream', 'loan', 'party',
     'bid', 'date', 'faith', 'racing', 'win', 'men', 'accountant', 'download',
-    'support', 'country', 'kim', 'science', 'cricket', 'rodeo'
+    'support', 'country', 'kim', 'science', 'cricket', 'rodeo', 'pro', 'cc',
+    'cam', 'surf', 'ws', 'to'
 }
 
 # Known URL shortener services
@@ -176,6 +563,88 @@ def evaluate_url(url_raw):
             'severity': 'CRITICAL',
             'score_impact': 55,
             'description': f'Unauthorized external host exploits the trademarked brand "{detected_brand.capitalize()}" to mislead and harvest credentials.'
+        })
+
+    # --- 3b. Piracy & Academic Shadow-Library Brand / Impostor Clone Analysis ---
+    detected_piracy_key = None
+    is_official_piracy = False
+    is_piracy_clone = False
+    is_known_clone = False
+    piracy_portal_info = None
+
+    # Check 1: Does host match any verified official domain in the directory?
+    for p_key, p_info in PIRACY_DIRECTORY.items():
+        if p_info.get('official_domains') and any(host == d or host.endswith('.' + d) for d in p_info['official_domains']):
+            detected_piracy_key = p_key
+            piracy_portal_info = p_info
+            is_official_piracy = True
+            break
+
+    # Check 2: If not official, does host match known tracked clone domains?
+    if not is_official_piracy:
+        for p_key, p_info in PIRACY_DIRECTORY.items():
+            if p_info.get('clone_domains') and any(host == d or host.endswith('.' + d) for d in p_info['clone_domains']):
+                detected_piracy_key = p_key
+                piracy_portal_info = p_info
+                is_piracy_clone = True
+                is_known_clone = True
+                break
+
+    # Check 3: If not matched yet, check if host or typosquatted host contains the portal brand
+    if not is_official_piracy and not is_piracy_clone:
+        for p_key, p_info in PIRACY_DIRECTORY.items():
+            if p_key in host_normalized or p_key in host:
+                detected_piracy_key = p_key
+                piracy_portal_info = p_info
+                if p_info.get('official_domains') and any(host == d or host.endswith('.' + d) for d in p_info['official_domains']):
+                    is_official_piracy = True
+                else:
+                    is_piracy_clone = True
+                    is_known_clone = False
+                break
+
+    if is_official_piracy:
+        category = f"Verified Official {piracy_portal_info['type']}"
+        score = max(score, piracy_portal_info.get('official_base_score', 42))
+        indicators.append({
+            'name': f"Verified Official {piracy_portal_info['name']} Domain",
+            'severity': 'MEDIUM',
+            'score_impact': piracy_portal_info.get('official_base_score', 42),
+            'description': f"Host '{host}' is the verified official domain for {piracy_portal_info['name']}. Verified domains: {', '.join(piracy_portal_info.get('official_domains', []))}. Note: Grey-market or copyright risks apply, but this host is NOT a known malware-injecting clone. Beware of external third-party ad networks."
+        })
+    elif is_piracy_clone:
+        if is_known_clone:
+            clone_impact = piracy_portal_info.get('clone_base_score', 96)
+            score += clone_impact
+            category = f"Malicious Piracy / Shadow-Library Clone"
+            indicators.append({
+                'name': f"Tracked Malicious Clone ({piracy_portal_info['name']})",
+                'severity': 'CRITICAL',
+                'score_impact': clone_impact,
+                'description': f"CRITICAL THREAT: '{host}' is a known fraudulent clone domain impersonating {piracy_portal_info['name']}. Threat Intel: {piracy_portal_info.get('clone_threat_notes', 'Clones distribute infostealers and trojans.')} Legitimate official domain is: {', '.join(piracy_portal_info.get('official_domains', ['None']))}."
+            })
+        else:
+            score += 75
+            category = f"Unverified Lookalike Piracy Clone"
+            indicators.append({
+                'name': f"Heuristic Impostor Clone ({piracy_portal_info['name']})",
+                'severity': 'CRITICAL',
+                'score_impact': 75,
+                'description': f"Domain '{host}' targets the '{piracy_portal_info['name']}' brand name, but is NOT on the verified official domain whitelist ({', '.join(piracy_portal_info.get('official_domains', []))}). Unofficial mirrors and clones have a 90%+ statistical correlation with Lumma Stealer and trojanized payloads."
+            })
+
+    # --- 3c. Generic Piracy / Warez / Streaming Keyword Detection ---
+    generic_piracy_regex = r'(repack|crack|keygen|warez|torrent|magnet|camrip|watch-free-online|free-movie|unlocked-apk|nulled|direct-download-free|full-game-crack)'
+    has_piracy_terms = bool(re.search(generic_piracy_regex, host + ' ' + path + ' ' + query, re.I))
+    if has_piracy_terms and not is_official_brand and not is_official_piracy:
+        score += 28
+        if category == 'Standard Web Domain':
+            category = 'Unverified Piracy / Illicit Media Portal'
+        indicators.append({
+            'name': 'Piracy / Warez Distribution Signatures',
+            'severity': 'HIGH' if is_piracy_clone else 'MEDIUM',
+            'score_impact': 28,
+            'description': 'URL contains keywords indicating pirated media, cracked software, or unverified streams. High statistical correlation with drive-by malvertising and browser hijacking.'
         })
 
     # --- 4. URL Shortener Masking ---
@@ -321,23 +790,39 @@ def evaluate_url(url_raw):
         score = min(score, 8)
 
     # Final score calibration (0 to 100)
-    final_score = min(99, max(2, score)) if not is_official_brand else min(10, max(2, score))
+    if is_official_brand:
+        final_score = min(10, max(2, score))
+    elif is_piracy_clone:
+        final_score = min(99, max(88, score))
+    elif is_official_piracy:
+        final_score = min(48, max(38, score))
+    else:
+        final_score = min(99, max(2, score))
 
     # Determine Differentiated Risk Tier & Actionable Recommendations
-    if final_score >= 80:
+    if is_piracy_clone or final_score >= 80:
         risk_level = 'CRITICAL'
-        verdict = 'Critical Phishing Threat Detected'
-        recommendation = '⛔ IMMEDIATE BLOCK: Critical threat detected. Host demonstrates active credential theft, brand masquerading, or malicious payload distribution. Block at firewall and do NOT navigate.'
+        if is_piracy_clone:
+            clone_prefix = "Known Malicious Clone" if is_known_clone else "Unverified Lookalike Clone"
+            verdict = f'{clone_prefix} ({piracy_portal_info["name"]})'
+            recommendation = f'⛔ IMMEDIATE BLOCK: Fake clone impersonating {piracy_portal_info["name"]}. Clones distribute infostealers (Lumma/RedLine), ransomware, or harvest institutional credentials. Do NOT download files or input passwords.'
+        else:
+            verdict = 'Critical Phishing Threat Detected'
+            recommendation = '⛔ IMMEDIATE BLOCK: Critical threat detected. Host demonstrates active credential theft, brand masquerading, or malicious payload distribution. Block at firewall and do NOT navigate.'
     elif final_score >= 65:
         risk_level = 'HIGH'
-        verdict = 'High Risk Phishing Activity'
-        recommendation = '🚨 DANGER: High probability of phishing. Do not input credentials, passwords, or personal identity details. Inspect domain authenticity.'
+        verdict = 'High Risk Phishing / Warez Activity'
+        recommendation = '🚨 DANGER: High probability of phishing or malicious distribution. Do not input credentials, passwords, or personal identity details. Inspect domain authenticity.'
     elif final_score >= 35:
         risk_level = 'MODERATE'
-        verdict = 'Suspicious / Elevated Risk'
-        if category == 'Standard Web Domain':
-            category = 'Suspicious Domain Heuristics'
-        recommendation = '⚠️ CAUTION ADVISED: Suspicious traits detected (masked destination, unusual TLD, or high lexical entropy). Manually verify the true landing address before proceeding.'
+        if is_official_piracy:
+            verdict = f'Verified Official {piracy_portal_info["name"]} (Grey-Market Caution)'
+            recommendation = f'⚠️ CAUTION ADVISED: Verified authentic portal for {piracy_portal_info["name"]}. While not an impostor malware clone, use caution with external file download links and third-party ad networks.'
+        else:
+            verdict = 'Suspicious / Elevated Risk'
+            if category == 'Standard Web Domain':
+                category = 'Suspicious Domain Heuristics'
+            recommendation = '⚠️ CAUTION ADVISED: Suspicious traits detected (masked destination, unusual TLD, or high lexical entropy). Manually verify the true landing address before proceeding.'
     else:
         risk_level = 'LOW'
         verdict = 'Verified Legitimate / Safe Web Domain'
@@ -364,6 +849,13 @@ def evaluate_url(url_raw):
         'is_official_brand': is_official_brand,
         'is_brand_spoof': is_brand_spoof,
         'detected_brand': detected_brand,
+        'is_official_piracy': is_official_piracy,
+        'is_piracy_clone': is_piracy_clone,
+        'is_known_clone': is_known_clone,
+        'piracy_portal': piracy_portal_info['name'] if piracy_portal_info else None,
+        'piracy_type': piracy_portal_info['type'] if piracy_portal_info else None,
+        'official_domains': piracy_portal_info.get('official_domains', []) if piracy_portal_info else [],
+        'sample_clone_domains': piracy_portal_info.get('clone_domains', [])[:5] if piracy_portal_info else [],
         'ml_probability': round(ml_prob * 100, 1),
         'recommendation': recommendation
     }
@@ -385,8 +877,100 @@ def evaluate_message(text, kind):
     indicators = []
     category = f"{kind.upper()} Social Engineering"
 
+    # --- 1. Header Intelligence & Lookalike / Cousin Domain Analysis (Email only) ---
+    header_res = {'has_headers': False, 'score': 0, 'indicators': []}
+    if kind == 'email':
+        try:
+            header_res = analyze_email_headers(raw)
+            if header_res['indicators']:
+                indicators.extend(header_res['indicators'])
+                score += header_res['score']
+        except Exception as e:
+            print(f"Header parser error: {e}")
+
+    # --- 1b. Brand Security & Password Confirmation Engine (Google, Steam, MS, Amazon) ---
+    brand_sec_res = {'is_brand_security': False, 'score': 0, 'indicators': []}
+    if kind == 'email':
+        try:
+            brand_sec_res = verify_brand_security_email(
+                raw,
+                from_addr=header_res.get('sender_addr', ''),
+                from_domain=header_res.get('sender_domain', '')
+            )
+            if brand_sec_res['is_brand_security']:
+                if brand_sec_res['is_authentic']:
+                    # Legitimate confirmation or promotional dispatch
+                    return {
+                        'score': brand_sec_res['score'],
+                        'risk_level': 'LOW',
+                        'verdict': brand_sec_res['verdict'],
+                        'threat_category': 'Official Brand Promotion' if brand_sec_res.get('is_promotional') else 'Verified Security Dispatch',
+                        'confidence': 98,
+                        'indicators': brand_sec_res['indicators'],
+                        'metadata': {
+                            'length': len(raw),
+                            'word_count': len(raw.split()),
+                            'recommendation': brand_sec_res['recommendation'],
+                            'is_authentic_brand': True,
+                            'brand': brand_sec_res.get('brand')
+                        },
+                        'engine': f'ThreatLens Explainable {kind.upper()} Brand Security Verifier'
+                    }
+                elif brand_sec_res['is_phishing']:
+                    indicators.extend(brand_sec_res['indicators'])
+                    score += brand_sec_res['score']
+        except Exception as e:
+            print(f"Brand security verifier error: {e}")
+
+    # --- 2. Sentence-Bounded Funds Transfer & Semantic Slot Analysis ---
+    ft_res = {'detected': False, 'total_score': 0, 'indicators': []}
+    try:
+        ft_res = analyze_funds_transfer(raw)
+        if ft_res['indicators']:
+            indicators.extend(ft_res['indicators'])
+            score += ft_res['total_score']
+    except Exception as e:
+        print(f"Funds transfer analyzer error: {e}")
+
     # Social engineering rules
     rules = [
+        # --- Hyper-Personalized Spear Phishing & Business Email Compromise (BEC) ---
+        (
+            r'\b(are you at your desk|are you available|in a conference|in a meeting|can\'t take calls|keep this confidential|urgent request for you|need a quick favor|reply directly to this email)\b',
+            'Hyper-Personalized Executive Check-In (BEC)',
+            'HIGH',
+            32,
+            'Message mimics a direct executive supervisor asking for urgent, off-channel assistance while claiming to be in a meeting.'
+        ),
+        (
+            r'\b(update (my|the) direct deposit|change (my )?bank details for payroll|payroll routing|new bank account for paycheck|before payroll cutoff|paycheck direct deposit)\b',
+            'Business Email Compromise (Payroll Diversion)',
+            'CRITICAL',
+            45,
+            'Direct attempt to divert employee payroll direct deposit to an attacker-controlled bank account before payroll closes.'
+        ),
+        (
+            r'\b(urgent wire transfer|wire the funds|overdue vendor invoice|payment instructions have changed|process this wire|confidential acquisition)\b',
+            'Business Email Compromise (Wire Fraud)',
+            'CRITICAL',
+            45,
+            'Solicits urgent wire transfer or changes to vendor invoice payment routing, a primary marker of corporate wire fraud.'
+        ),
+        (
+            r'\b(buy (some )?gift cards|apple gift card|google play card|steam gift card|scratch the back|send pictures of the (cards|codes)|for a client gift)\b',
+            'Executive Gift Card Procurement Scam',
+            'CRITICAL',
+            42,
+            'Coerces employee into purchasing retail gift cards under the guise of an urgent executive client emergency.'
+        ),
+        (
+            r'\b(send (me )?(the )?w-?2|employee tax forms|ssn list|payroll summary with ssn)\b',
+            'Targeted Employee W-2 / PII Exfiltration',
+            'CRITICAL',
+            45,
+            'Solicits bulk employee tax documents (W-2) or Social Security numbers for corporate identity theft.'
+        ),
+        # --- Standard Phishing Heuristics ---
         (
             r'urgent|act now|immediately|final warning|suspend|within 24 hours|account frozen|legal action|law enforcement|arrest warrant|penalty',
             'Coercive Urgency Pressure',
@@ -448,16 +1032,48 @@ def evaluate_message(text, kind):
             })
             score += impact
 
-    final_score = min(99, max(5, score)) if indicators else 8
+    is_bec = (
+        header_res.get('is_cousin_spoof')
+        or ft_res.get('detected')
+        or any('BEC' in ind['name'] or 'Compromise' in ind['name'] or 'Exfiltration' in ind['name'] or 'Gift Card' in ind['name'] or 'Financial Transfer' in ind['name'] or 'Cousin Domain' in ind['name'] for ind in indicators)
+    )
+    if is_bec:
+        category = 'Spear Phishing / Business Email Compromise (BEC)'
+
+    is_brand_phish = brand_sec_res.get('is_phishing', False)
+    if is_brand_phish:
+        category = 'Credential Harvesting & Brand Phishing'
+
+    if header_res.get('is_cousin_spoof') and ft_res.get('detected'):
+        final_score = min(99, max(96, score))
+    elif is_brand_phish:
+        final_score = min(99, max(95, score))
+    elif header_res.get('is_cousin_spoof') or (is_bec and score >= 70):
+        final_score = min(99, max(92, score))
+    elif indicators:
+        final_score = min(99, max(5, score))
+    else:
+        final_score = 8
 
     if final_score >= 75:
         risk_level = 'CRITICAL'
-        verdict = f'High Threat Phishing / Fraud {kind.upper()}'
-        recommendation = '⛔ DO NOT ENGAGE: Malicious social engineering detected. Do not click links, provide OTP codes, or dial provided telephone numbers. Delete and report as spam.'
+        if is_brand_phish:
+            verdict = brand_sec_res.get('verdict')
+            recommendation = brand_sec_res.get('recommendation')
+        elif is_bec:
+            verdict = 'Targeted Spear Phishing / BEC Attack Detected'
+            recommendation = '🚨 DO NOT PROCESS: High-confidence Business Email Compromise (BEC) detected. Attack combines lookalike domain masquerading, executive impersonation, and unauthorized wire transfer commands. Verify out-of-band directly with the sender via telephone.'
+        else:
+            verdict = f'High Threat Phishing / Fraud {kind.upper()}'
+            recommendation = '⛔ DO NOT ENGAGE: Malicious social engineering detected. Do not click links, provide OTP codes, or dial provided telephone numbers. Delete and report as spam.'
     elif final_score >= 40:
         risk_level = 'MODERATE'
-        verdict = f'Suspicious / Potential Fraud {kind.upper()}'
-        recommendation = '⚠️ CAUTION: Unverified communication exhibiting pressure tactics or unsolicited links. Contact the institution via their official phone number or website directly.'
+        if is_bec:
+            verdict = 'Suspicious Executive Ingestion Request'
+            recommendation = '⚠️ CAUTION: Unscheduled off-channel request matching corporate impersonation patterns. Verify sender authenticity.'
+        else:
+            verdict = f'Suspicious / Potential Fraud {kind.upper()}'
+            recommendation = '⚠️ CAUTION: Unverified communication exhibiting pressure tactics or unsolicited links. Contact the institution via their official phone number or website directly.'
     else:
         risk_level = 'LOW'
         verdict = f'Low Risk / Standard {kind.upper()}'
@@ -475,7 +1091,13 @@ def evaluate_message(text, kind):
     metadata = {
         'length': len(raw),
         'word_count': len(raw.split()),
-        'recommendation': recommendation
+        'recommendation': recommendation,
+        'has_headers': header_res.get('has_headers', False),
+        'sender_domain': header_res.get('sender_domain'),
+        'recip_domain': header_res.get('recip_domain'),
+        'is_cousin_spoof': header_res.get('is_cousin_spoof', False),
+        'funds_transfer_detected': ft_res.get('detected', False),
+        'funds_transfer_findings': ft_res.get('findings', [])
     }
 
     return {
@@ -655,7 +1277,7 @@ def health_endpoint():
         platform='ThreatLens AI Cyber Threat Intelligence',
         version='3.5.0',
         model_lr_loaded=model_lr is not None,
-        model_mnb_loaded=model_mnb is not None
+        model_mnb_loaded=get_model_mnb() is not None
     )
 
 # Static file serving for production build
